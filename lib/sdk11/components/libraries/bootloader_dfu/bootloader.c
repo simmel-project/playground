@@ -321,7 +321,7 @@ uint32_t bootloader_init(void)
 }
 
 
-uint32_t bootloader_dfu_start(bool ota, uint32_t timeout_ms)
+uint32_t bootloader_dfu_start(uint32_t timeout_ms)
 {
     uint32_t err_code;
 
@@ -329,22 +329,16 @@ uint32_t bootloader_dfu_start(bool ota, uint32_t timeout_ms)
     err_code = dfu_init();
     VERIFY_SUCCESS(err_code);
 
-    if ( ota )
+    // timeout_ms > 0 is forced startup DFU
+    if ( timeout_ms )
     {
-      err_code = dfu_transport_ble_update_start();
-    }else
-    {
-      // timeout_ms > 0 is forced startup DFU
-      if ( timeout_ms )
-      {
-        dfu_startup_packet_received = false;
+      dfu_startup_packet_received = false;
 
-        app_timer_create(&_dfu_startup_timer, APP_TIMER_MODE_SINGLE_SHOT, dfu_startup_timer_handler);
-        app_timer_start(_dfu_startup_timer, APP_TIMER_TICKS(timeout_ms), NULL);
-      }
-
-      err_code = dfu_transport_serial_update_start();
+      app_timer_create(&_dfu_startup_timer, APP_TIMER_MODE_SINGLE_SHOT, dfu_startup_timer_handler);
+      app_timer_start(_dfu_startup_timer, APP_TIMER_TICKS(timeout_ms), NULL);
     }
+
+    err_code = dfu_transport_serial_update_start();
 
     wait_for_events();
 
