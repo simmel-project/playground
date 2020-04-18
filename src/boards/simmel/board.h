@@ -29,23 +29,19 @@
 /* LED
  *------------------------------------------------------------------*/
 #define LEDS_NUMBER         1
-#define LED_PRIMARY_PIN     4
+// #define LED_PRIMARY_PIN     4
+#define LED_PRIMARY_PIN     14
 #define LED_STATE_ON        0
 
-/*------------------------------------------------------------------*/
-/* BUTTON
- *------------------------------------------------------------------*/
-#define BUTTONS_NUMBER      0
-
-//--------------------------------------------------------------------+
-// BLE OTA
-//--------------------------------------------------------------------+
-#define BLEDIS_MANUFACTURER    "Betrusted"
-#define BLEDIS_MODEL           "Simmel"
+#define LOOPBACK_TX_PIN         12
+#define LOOPBACK_RX_PIN         11
 
 //--------------------------------------------------------------------+
 // USB
 //--------------------------------------------------------------------+
+#define USB_MANUFACTURER    "Betrusted"
+#define USB_MODEL           "Simmel"
+#define UF2_VOLUME_LABEL    "SIMMEL_BOOT"
 #define UF2_PRODUCT_NAME    "Simmel"
 #define UF2_BOARD_ID        "nRF52833-simmel-v1"
 #define UF2_INDEX_URL       "https://github.com/simmel-project/"

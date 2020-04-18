@@ -90,23 +90,6 @@ void led_state(uint32_t state);
 void led_tick(void);
 
 //--------------------------------------------------------------------+
-// BUTTONS
-//--------------------------------------------------------------------+
-// Make sure we have at least two buttons (DFU + FRESET since DFU+FRST=OTA)
-#if BUTTONS_NUMBER < 2
-#define button_init(pin)
-#define button_pressed(pin) false
-#else
-// #error "At least two buttons required in the BSP (see 'BUTTONS_NUMBER')"
-// #endif
-
-void button_init(uint32_t pin);
-bool button_pressed(uint32_t pin);
-#endif
-
-bool is_ota(void);
-
-//--------------------------------------------------------------------+
 // DEBUG
 //--------------------------------------------------------------------+
 //#define CFG_DEBUG

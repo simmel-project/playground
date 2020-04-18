@@ -43,66 +43,66 @@
 #include "nrf_error.h"
 #include "crc16.h"
 
-#if defined ( __CC_ARM )
-static dfu_ble_peer_data_t m_peer_data __attribute__((section("NoInit"), zero_init));            /**< This variable should be placed in a non initialized RAM section in order to be valid upon soft reset from application into bootloader. */
-static uint16_t            m_peer_data_crc __attribute__((section("NoInit"), zero_init));        /**< CRC variable to ensure the integrity of the peer data provided. */
-#elif defined ( __GNUC__ )
-__attribute__((section(".noinit"))) static dfu_ble_peer_data_t m_peer_data;                      /**< This variable should be placed in a non initialized RAM section in order to be valid upon soft reset from application into bootloader. */
-__attribute__((section(".noinit"))) static uint16_t            m_peer_data_crc;                  /**< CRC variable to ensure the integrity of the peer data provided. */
-#elif defined ( __ICCARM__ )
-__no_init static dfu_ble_peer_data_t m_peer_data     @ 0x20003F80;                               /**< This variable should be placed in a non initialized RAM section in order to be valid upon soft reset from application into bootloader. */
-__no_init static uint16_t            m_peer_data_crc @ 0x20003F80 + sizeof(dfu_ble_peer_data_t); /**< CRC variable to ensure the integrity of the peer data provided. */
-#endif
+// #if defined ( __CC_ARM )
+// static dfu_ble_peer_data_t m_peer_data __attribute__((section("NoInit"), zero_init));            /**< This variable should be placed in a non initialized RAM section in order to be valid upon soft reset from application into bootloader. */
+// static uint16_t            m_peer_data_crc __attribute__((section("NoInit"), zero_init));        /**< CRC variable to ensure the integrity of the peer data provided. */
+// #elif defined ( __GNUC__ )
+// __attribute__((section(".noinit"))) static dfu_ble_peer_data_t m_peer_data;                      /**< This variable should be placed in a non initialized RAM section in order to be valid upon soft reset from application into bootloader. */
+// __attribute__((section(".noinit"))) static uint16_t            m_peer_data_crc;                  /**< CRC variable to ensure the integrity of the peer data provided. */
+// #elif defined ( __ICCARM__ )
+// __no_init static dfu_ble_peer_data_t m_peer_data     @ 0x20003F80;                               /**< This variable should be placed in a non initialized RAM section in order to be valid upon soft reset from application into bootloader. */
+// __no_init static uint16_t            m_peer_data_crc @ 0x20003F80 + sizeof(dfu_ble_peer_data_t); /**< CRC variable to ensure the integrity of the peer data provided. */
+// #endif
 
 
-/**@brief Function for setting the peer data from application in bootloader before reset.
- *
- * @param[in] p_peer_data  Pointer to the peer data containing keys for the connection.
- *
- * @retval NRF_SUCCES      The data was set succesfully.
- * @retval NRF_ERROR_NULL  If a null pointer was passed as argument.
- */
-static uint32_t dfu_ble_peer_data_set(dfu_ble_peer_data_t * p_peer_data)
-{
-    if (p_peer_data == NULL)
-    {
-        return NRF_ERROR_NULL;
-    }
+// /**@brief Function for setting the peer data from application in bootloader before reset.
+//  *
+//  * @param[in] p_peer_data  Pointer to the peer data containing keys for the connection.
+//  *
+//  * @retval NRF_SUCCES      The data was set succesfully.
+//  * @retval NRF_ERROR_NULL  If a null pointer was passed as argument.
+//  */
+// static uint32_t dfu_ble_peer_data_set(dfu_ble_peer_data_t * p_peer_data)
+// {
+//     if (p_peer_data == NULL)
+//     {
+//         return NRF_ERROR_NULL;
+//     }
 
-    uint32_t src = (uint32_t)p_peer_data;
-    uint32_t dst = (uint32_t)&m_peer_data;
-    // Calculating length in order to check if destination is residing inside source.
-    // Source inside the the destination (calculation underflow) is safe a source is read before 
-    // written to destination so that when destination grows into source, the source data is no 
-    // longer needed.
-    uint32_t len = dst - src;
+//     uint32_t src = (uint32_t)p_peer_data;
+//     uint32_t dst = (uint32_t)&m_peer_data;
+//     // Calculating length in order to check if destination is residing inside source.
+//     // Source inside the the destination (calculation underflow) is safe a source is read before 
+//     // written to destination so that when destination grows into source, the source data is no 
+//     // longer needed.
+//     uint32_t len = dst - src;
 
-    if (src == dst)
-    {
-        // Do nothing as source and destination are identical, just calculate crc below.
-    }
-    else if (len < sizeof(dfu_ble_peer_data_t))
-    {
-        uint32_t i = 0;
+//     if (src == dst)
+//     {
+//         // Do nothing as source and destination are identical, just calculate crc below.
+//     }
+//     else if (len < sizeof(dfu_ble_peer_data_t))
+//     {
+//         uint32_t i = 0;
 
-        dst += sizeof(dfu_ble_peer_data_t);
-        src += sizeof(dfu_ble_peer_data_t);
+//         dst += sizeof(dfu_ble_peer_data_t);
+//         src += sizeof(dfu_ble_peer_data_t);
 
-        // Copy byte wise backwards when facing overlapping structures.
-        while (i++ <= sizeof(dfu_ble_peer_data_t))
-        {
-            *((uint8_t *)dst--) = *((uint8_t *)src--);
-        }
-    }
-    else
-    {
-        memcpy((void *)dst, (void *)src, sizeof(dfu_ble_peer_data_t));
-    }
+//         // Copy byte wise backwards when facing overlapping structures.
+//         while (i++ <= sizeof(dfu_ble_peer_data_t))
+//         {
+//             *((uint8_t *)dst--) = *((uint8_t *)src--);
+//         }
+//     }
+//     else
+//     {
+//         memcpy((void *)dst, (void *)src, sizeof(dfu_ble_peer_data_t));
+//     }
 
-    m_peer_data_crc = crc16_compute((uint8_t *)&m_peer_data, sizeof(m_peer_data), NULL);
+//     m_peer_data_crc = crc16_compute((uint8_t *)&m_peer_data, sizeof(m_peer_data), NULL);
 
-    return NRF_SUCCESS;
-}
+//     return NRF_SUCCESS;
+// }
 
 
 /**@brief   Function for handling second stage of SuperVisor Calls (SVC).
@@ -119,16 +119,16 @@ static uint32_t dfu_ble_peer_data_set(dfu_ble_peer_data_t * p_peer_data)
  */
 void C_SVC_Handler(uint8_t svc_num, uint32_t * p_svc_args)
 {
-    switch (svc_num)
-    {
-        case DFU_BLE_SVC_PEER_DATA_SET:
-            p_svc_args[0] = dfu_ble_peer_data_set((dfu_ble_peer_data_t *)p_svc_args[0]);
-            break;
+    // switch (svc_num)
+    // {
+    //     case DFU_BLE_SVC_PEER_DATA_SET:
+    //         p_svc_args[0] = dfu_ble_peer_data_set((dfu_ble_peer_data_t *)p_svc_args[0]);
+    //         break;
 
-        default:
+    //     default:
             p_svc_args[0] = NRF_ERROR_SVC_HANDLER_MISSING;
-            break;
-    }
+    //         break;
+    // }
 }
 
 
@@ -209,25 +209,25 @@ void SVC_Handler(void)
 #endif
 
 
-uint32_t dfu_ble_peer_data_get(dfu_ble_peer_data_t * p_peer_data)
-{
-    uint16_t crc;
+// uint32_t dfu_ble_peer_data_get(dfu_ble_peer_data_t * p_peer_data)
+// {
+//     uint16_t crc;
 
-    if (p_peer_data == NULL)
-    {
-        return NRF_ERROR_NULL;
-    }
+//     if (p_peer_data == NULL)
+//     {
+//         return NRF_ERROR_NULL;
+//     }
 
-    crc = crc16_compute((uint8_t *)&m_peer_data, sizeof(m_peer_data), NULL);
-    if (crc != m_peer_data_crc)
-    {
-        return NRF_ERROR_INVALID_DATA;
-    }
+//     crc = crc16_compute((uint8_t *)&m_peer_data, sizeof(m_peer_data), NULL);
+//     if (crc != m_peer_data_crc)
+//     {
+//         return NRF_ERROR_INVALID_DATA;
+//     }
 
-    *p_peer_data = m_peer_data;
+//     *p_peer_data = m_peer_data;
 
-    // corrupt CRC to invalidate shared information.
-    m_peer_data_crc++;
+//     // corrupt CRC to invalidate shared information.
+//     m_peer_data_crc++;
 
-    return NRF_SUCCESS;
-}
+//     return NRF_SUCCESS;
+// }

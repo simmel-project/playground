@@ -33,9 +33,6 @@ enum {
     ITF_STR_MSC
 };
 
-// CDC + MSC or CDC only mode
-static bool _cdc_only = false;
-
 // Serial is 64-bit DeviceID -> 16 chars len
 static char desc_str_serial[1+16];
 
@@ -96,15 +93,6 @@ uint8_t const desc_configuration_cdc_msc[] =
   TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, ITF_STR_MSC, 0x03, 0x83, 64),
 };
 
-uint8_t const desc_configuration_cdc_only[] =
-{
-  // Interface count, string index, total length, attribute, power in mA
-  TUD_CONFIG_DESCRIPTOR(ITF_NUM_TOTAL-1, 0, TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
-
-  // Interface number, string index, EP notification address and size, EP data address (out, in) and size.
-  TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, ITF_STR_CDC, 0x81, 8, 0x02, 0x82, 64),
-};
-
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR
 // Application return pointer to descriptor
@@ -112,22 +100,26 @@ uint8_t const desc_configuration_cdc_only[] =
 uint8_t const * tud_descriptor_configuration_cb(uint8_t index)
 {
   (void) index; // for multiple configurations
-  return _cdc_only ? desc_configuration_cdc_only : desc_configuration_cdc_msc;
+  return desc_configuration_cdc_msc;
 }
 
 // Enumerate as CDC + MSC or CDC only
-void usb_desc_init(bool cdc_only)
+void usb_desc_init(void)
 {
-  _cdc_only = cdc_only;
+  static const char HEX_DIGITS[16] = "0123456789ABCDEF";
+  unsigned int i;
+  uint32_t serial;
 
-  if ( cdc_only )
-  {
-    // Change PID to CDC only
-    desc_device.idProduct = USB_DESC_CDC_ONLY_PID;
+  serial = NRF_FICR->DEVICEID[1];
+  for (i = 0; i < 8; i++) {
+    desc_str_serial[i] = HEX_DIGITS[15 & (serial>>(i<<2))];
   }
 
-  // Create Serial string descriptor
-  sprintf(desc_str_serial, "%08lX%08lX", NRF_FICR->DEVICEID[1], NRF_FICR->DEVICEID[0]);
+  serial = NRF_FICR->DEVICEID[0];
+  for (i = 0; i < 8; i++) {
+    desc_str_serial[8+i] = HEX_DIGITS[15 & (serial>>(i<<2))];
+  }
+  desc_str_serial[16] = '\0';
 }
 
 //--------------------------------------------------------------------+
@@ -138,8 +130,8 @@ void usb_desc_init(bool cdc_only)
 char const* string_desc_arr [] =
 {
   (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
-  BLEDIS_MANUFACTURER,           // 1: Manufacturer
-  BLEDIS_MODEL,                  // 2: Product
+  USB_MANUFACTURER,              // 1: Manufacturer
+  USB_MODEL,                     // 2: Product
   desc_str_serial,               // 3: Serials, should use chip ID
   "nRF Serial",                  // 4: CDC Interface
   "nRF UF2",                     // 5: MSC Interface

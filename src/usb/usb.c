@@ -45,7 +45,7 @@
 extern void tusb_hal_nrf_power_event(uint32_t event);
 
 //------------- IMPLEMENTATION -------------//
-void usb_init(bool cdc_only)
+void usb_init(void)
 {
   NVIC_SetPriority(USBD_IRQn, 2);
 
@@ -87,7 +87,7 @@ void usb_init(bool cdc_only)
     tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_READY);
   }
 
-  usb_desc_init(cdc_only);
+  usb_desc_init();
 
   // Init TinyUSB stack
   tusb_init();

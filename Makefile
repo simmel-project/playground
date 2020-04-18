@@ -105,11 +105,11 @@ C_SRC += $(NRFX_PATH)/mdk/system_$(MCU_SUB_VARIANT).c
 C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/bootloader.c
 C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/bootloader_settings.c
 C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/bootloader_util.c
-C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_transport_serial.c
-C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_transport_ble.c
-C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_single_bank.c
-C_SRC += $(SDK11_PATH)/ble/ble_services/ble_dfu/ble_dfu.c
-C_SRC += $(SDK11_PATH)/ble/ble_services/ble_dis/ble_dis.c
+# C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_transport_serial.c
+# C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_transport_ble.c
+# C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_single_bank.c
+# C_SRC += $(SDK11_PATH)/ble/ble_services/ble_dfu/ble_dfu.c
+# C_SRC += $(SDK11_PATH)/ble/ble_services/ble_dis/ble_dis.c
 C_SRC += $(SDK11_PATH)/drivers_nrf/pstorage/pstorage_raw.c
 
 # Latest SDK files: peripheral drivers
@@ -118,17 +118,17 @@ C_SRC += $(SDK_PATH)/libraries/scheduler/app_scheduler.c
 C_SRC += $(SDK_PATH)/libraries/util/app_error.c
 C_SRC += $(SDK_PATH)/libraries/util/app_util_platform.c
 C_SRC += $(SDK_PATH)/libraries/crc16/crc16.c
-C_SRC += $(SDK_PATH)/libraries/hci/hci_mem_pool.c
-C_SRC += $(SDK_PATH)/libraries/hci/hci_slip.c
-C_SRC += $(SDK_PATH)/libraries/hci/hci_transport.c
+# C_SRC += $(SDK_PATH)/libraries/hci/hci_mem_pool.c
+# C_SRC += $(SDK_PATH)/libraries/hci/hci_slip.c
+# C_SRC += $(SDK_PATH)/libraries/hci/hci_transport.c
 C_SRC += $(SDK_PATH)/libraries/util/nrf_assert.c
 
 # UART or USB Serial
 ifeq ($(MCU_SUB_VARIANT),nrf52)
 
-C_SRC += $(SDK_PATH)/libraries/uart/app_uart.c
-C_SRC += $(SDK_PATH)/drivers_nrf/uart/nrf_drv_uart.c
-C_SRC += $(SDK_PATH)/drivers_nrf/common/nrf_drv_common.c
+# C_SRC += $(SDK_PATH)/libraries/uart/app_uart.c
+# C_SRC += $(SDK_PATH)/drivers_nrf/uart/nrf_drv_uart.c
+# C_SRC += $(SDK_PATH)/drivers_nrf/common/nrf_drv_common.c
 
 IPATH += $(SDK11_PATH)/libraries/util
 IPATH += $(SDK_PATH)/drivers_nrf/common
@@ -212,6 +212,7 @@ endif
 #flags common to all targets
 CFLAGS += \
 	-mthumb \
+	-flto \
 	-mabi=aapcs \
 	-mcpu=cortex-m4 \
 	-mfloat-abi=hard \
@@ -234,7 +235,7 @@ CFLAGS += \
 	-Wsign-compare \
 	-Wmissing-format-attribute \
 	-Wno-endif-labels \
-	-Wunreachable-code	
+	-Wunreachable-code
 
 # Suppress warning caused by SDK
 CFLAGS += -Wno-unused-parameter -Wno-expansion-to-defined
@@ -372,7 +373,7 @@ $(BUILD)/$(OUT_FILE)-nosd.hex: $(BUILD)/$(OUT_FILE)-nosd.out
 # merge bootloader and sd hex together
 $(BUILD)/$(MERGED_FILE).hex: $(BUILD)/$(OUT_FILE)-nosd.hex
 	@echo CR $(MERGED_FILE).hex
-	@mergehex -q -m $< $(SD_HEX) -o $@
+	@mergehex.exe -q -m $< $(SD_HEX) -o $@
 
 ## Create pkg zip file for bootloader+SD combo to use with DFU Serial
 .PHONY: genpkg

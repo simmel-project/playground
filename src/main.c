@@ -73,12 +73,12 @@
 #include "nrf_usbd.h"
 #include "tusb.h"
 
-void usb_init(bool cdc_only);
+void usb_init(void);
 void usb_teardown(void);
 
 #else
 
-#define usb_init(x)       led_state(STATE_USB_MOUNTED) // mark nrf52832 as mounted
+#define usb_init()       led_state(STATE_USB_MOUNTED) // mark nrf52832 as mounted
 #define usb_teardown()
 
 #endif
@@ -128,14 +128,13 @@ enum { BLE_CONN_CFG_HIGH_BANDWIDTH = 1 };
 #ifdef NRF52840_XXAA
   // Flash 1024 KB
   STATIC_ASSERT( APPDATA_ADDR_START == 0xED000);
-
 #else
   // Flash 512 KB
-  STATIC_ASSERT( APPDATA_ADDR_START == 0x6D000);
+  STATIC_ASSERT( APPDATA_ADDR_START == 0x73000);
 #endif
 
 
-void adafruit_factory_reset(void);
+// void adafruit_factory_reset(void);
 
 uint32_t* dbl_reset_mem = ((uint32_t*)  DFU_DBL_RESET_MEM );
 
@@ -153,17 +152,47 @@ void softdev_mbr_init(void)
   sd_mbr_command(&com);
 }
 
+// Send data out one pin and look for it coming back
+// on the other.  Toggle it up and down.
+static bool check_loopback(void) {
+  unsigned int i = 0;
+  nrf_gpio_cfg_output(LOOPBACK_TX_PIN);
+  nrf_gpio_cfg_input(LOOPBACK_RX_PIN, NRF_GPIO_PIN_NOPULL);
+
+  for (i = 0; i < 16; i++) {
+    if ((i & 1) == 0) {
+      nrf_gpio_pin_clear(LOOPBACK_TX_PIN);
+      // Dummy read to force sync
+      (void)nrf_gpio_pin_read(LOOPBACK_TX_PIN);
+      if (nrf_gpio_pin_read(LOOPBACK_RX_PIN))
+        return false;
+    }
+    else {
+      nrf_gpio_pin_set(LOOPBACK_TX_PIN);
+      // Dummy read to force sync
+      (void)nrf_gpio_pin_read(LOOPBACK_TX_PIN);
+      if (!nrf_gpio_pin_read(LOOPBACK_RX_PIN))
+        return false;
+    }
+  }
+  return true;
+}
+
 int main(void)
 {
   // SD is already Initialized in case of BOOTLOADER_DFU_OTA_MAGIC
   bool sd_inited = (NRF_POWER->GPREGRET == DFU_MAGIC_OTA_APPJUM);
 
   // Serial only mode
-  bool serial_only_dfu = (NRF_POWER->GPREGRET == DFU_MAGIC_SERIAL_ONLY_RESET);
+  // bool serial_only_dfu = (NRF_POWER->GPREGRET == DFU_MAGIC_SERIAL_ONLY_RESET);
+
+  // Pins are shorted together
+  bool loopback_shorted = check_loopback();
 
   // start either serial, uf2 or ble
-  bool dfu_start = serial_only_dfu || (NRF_POWER->GPREGRET == DFU_MAGIC_UF2_RESET) ||
+  bool dfu_start = loopback_shorted || (NRF_POWER->GPREGRET == DFU_MAGIC_UF2_RESET) ||
                     (((*dbl_reset_mem) == DFU_DBL_RESET_MAGIC) && (NRF_POWER->RESETREAS & POWER_RESETREAS_RESETPIN_Msk));
+
 
   // Clear GPREGRET if it is our values
   if (dfu_start) NRF_POWER->GPREGRET = 0;
@@ -179,20 +208,20 @@ int main(void)
 
   led_state(STATE_BOOTLOADER_STARTED);
 
-  // When updating SoftDevice, bootloader will reset before swapping SD
-  if (bootloader_dfu_sd_in_progress())
-  {
-    led_state(STATE_WRITING_STARTED);
+  // // When updating SoftDevice, bootloader will reset before swapping SD
+  // if (bootloader_dfu_sd_in_progress())
+  // {
+  //   led_state(STATE_WRITING_STARTED);
 
-    APP_ERROR_CHECK( bootloader_dfu_sd_update_continue() );
-    APP_ERROR_CHECK( bootloader_dfu_sd_update_finalize() );
+  //   APP_ERROR_CHECK( bootloader_dfu_sd_update_continue() );
+  //   APP_ERROR_CHECK( bootloader_dfu_sd_update_finalize() );
 
-    led_state(STATE_WRITING_FINISHED);
-  }
+  //   led_state(STATE_WRITING_FINISHED);
+  // }
 
   /*------------- Determine DFU mode (Serial, OTA, FRESET or normal) -------------*/
   // DFU button pressed
-  dfu_start  = dfu_start || button_pressed(BUTTON_DFU);
+  // dfu_start  = dfu_start || button_pressed(BUTTON_DFU);
 
   bool const valid_app = bootloader_app_is_valid(DFU_BANK_0_REGION_START);
   bool const just_start_app = valid_app && !dfu_start && (*dbl_reset_mem) == DFU_DBL_RESET_APP;
@@ -206,18 +235,18 @@ int main(void)
     // Register our first reset for double reset detection
     (*dbl_reset_mem) = DFU_DBL_RESET_MAGIC;
 
-#ifdef NRF52832_XXAA
-    /* Even DFU is not active, we still force an 1000 ms dfu serial mode when startup
-     * to support auto programming from Arduino IDE
-     *
-     * Note: Supposedly during this time if RST is press, it will count as double reset.
-     * However Double Reset WONT work with nrf52832 since its SRAM got cleared anyway.
-     */
-    bootloader_dfu_start(DFU_SERIAL_STARTUP_INTERVAL);
-#else
-    // if RST is pressed during this delay --> if will enter dfu
-    NRFX_DELAY_MS(DFU_DBL_RESET_DELAY);
-#endif
+// #ifdef NRF52832_XXAA
+//     /* Even DFU is not active, we still force an 1000 ms dfu serial mode when startup
+//      * to support auto programming from Arduino IDE
+//      *
+//      * Note: Supposedly during this time if RST is press, it will count as double reset.
+//      * However Double Reset WONT work with nrf52832 since its SRAM got cleared anyway.
+//      */
+//     bootloader_dfu_start(DFU_SERIAL_STARTUP_INTERVAL);
+// #else
+//     // if RST is pressed during this delay --> if will enter dfu
+//     NRFX_DELAY_MS(DFU_DBL_RESET_DELAY);
+// #endif
   }
 
   if (APP_ASKS_FOR_SINGLE_TAP_RESET())
@@ -225,22 +254,27 @@ int main(void)
   else
     (*dbl_reset_mem) = 0;
 
-  if ( dfu_start || !valid_app )
+  if ( dfu_start || !valid_app)
   {
     led_state(STATE_USB_UNMOUNTED);
-    usb_init(serial_only_dfu);
+    usb_init();
 
     // Initiate an update of the firmware.
-    APP_ERROR_CHECK( bootloader_dfu_start(0) );
+    // APP_ERROR_CHECK( bootloader_dfu_start(0) );
+    // while (1) {
+    //   tud_task();
+    //   tud_cdc_write_flush();
+    // }
+    bootloader_run(0);
 
     usb_teardown();
   }
 
-  // Adafruit Factory reset
-  if ( !button_pressed(BUTTON_DFU) && button_pressed(BUTTON_FRESET) )
-  {
-    adafruit_factory_reset();
-  }
+  // // Adafruit Factory reset
+  // if ( !button_pressed(BUTTON_DFU) && button_pressed(BUTTON_FRESET) )
+  // {
+    // adafruit_factory_reset();
+  // }
 
   // Reset Board
   board_teardown();
@@ -263,23 +297,23 @@ int main(void)
 }
 
 
-// Perform factory reset to erase Application + Data
-void adafruit_factory_reset(void)
-{
-  led_state(STATE_FACTORY_RESET_STARTED);
+// // Perform factory reset to erase Application + Data
+// void adafruit_factory_reset(void)
+// {
+//   led_state(STATE_FACTORY_RESET_STARTED);
 
-  // clear all App Data if any
-  if ( DFU_APP_DATA_RESERVED )
-  {
-    nrfx_nvmc_page_erase(APPDATA_ADDR_START);
-  }
+//   // clear all App Data if any
+//   if ( DFU_APP_DATA_RESERVED )
+//   {
+//     nrfx_nvmc_page_erase(APPDATA_ADDR_START);
+//   }
 
-  // Only need to erase the 1st page of Application code to make it invalid
-  nrfx_nvmc_page_erase(DFU_BANK_0_REGION_START);
+//   // Only need to erase the 1st page of Application code to make it invalid
+//   nrfx_nvmc_page_erase(DFU_BANK_0_REGION_START);
 
-  // back to normal
-  led_state(STATE_FACTORY_RESET_FINISHED);
-}
+//   // back to normal
+//   led_state(STATE_FACTORY_RESET_FINISHED);
+// }
 
 
 //--------------------------------------------------------------------+

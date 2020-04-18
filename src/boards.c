@@ -33,34 +33,7 @@
 #define SCHED_MAX_EVENT_DATA_SIZE           sizeof(app_timer_event_t)        /**< Maximum size of scheduler events. */
 #define SCHED_QUEUE_SIZE                    30                               /**< Maximum number of events in the scheduler queue. */
 
-#if defined(LED_NEOPIXEL) || defined(LED_RGB_RED_PIN)
-  void neopixel_init(void);
-  void neopixel_write(uint8_t *pixels);
-  void neopixel_teardown(void);
-#endif
-
 //------------- IMPLEMENTATION -------------//
-#if BUTTONS_NUMBER >= 2
-void button_init(uint32_t pin)
-{
-  if ( BUTTON_PULL == NRF_GPIO_PIN_PULLDOWN )
-  {
-    nrf_gpio_cfg_sense_input(pin, BUTTON_PULL, NRF_GPIO_PIN_SENSE_HIGH);
-  }
-  else
-  {
-    nrf_gpio_cfg_sense_input(pin, BUTTON_PULL, NRF_GPIO_PIN_SENSE_LOW);
-  }
-}
-#endif
-
-#if BUTTONS_NUMBER >= 2
-bool button_pressed(uint32_t pin)
-{
-  uint32_t const active_state = (BUTTON_PULL == NRF_GPIO_PIN_PULLDOWN ? 1 : 0);
-  return nrf_gpio_pin_read(pin) == active_state;
-}
-#endif
 
 void board_init(void)
 {
@@ -71,22 +44,11 @@ void board_init(void)
   NRF_CLOCK->LFCLKSRC = CLOCK_LFCLKSRC_SRC_RC;
   NRF_CLOCK->TASKS_LFCLKSTART = 1UL;
 
-#if BUTTONS_NUMBER >= 2
-  button_init(BUTTON_DFU);
-  button_init(BUTTON_FRESET);
-  NRFX_DELAY_US(100); // wait for the pin state is stable
-#endif // BUTTONS >= 2
-
   // use PMW0 for LED RED
   led_pwm_init(LED_PRIMARY, LED_PRIMARY_PIN);
   #if LEDS_NUMBER > 1
   led_pwm_init(LED_SECONDARY, LED_SECONDARY_PIN);
   #endif
-
-  // use neopixel for use enumeration
-#if defined(LED_NEOPIXEL) || defined(LED_RGB_RED_PIN)
-  neopixel_init();
-#endif
 
   // Init scheduler
   APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
@@ -106,10 +68,6 @@ void board_teardown(void)
 
   // Disable and reset PWM for LEDs
   led_pwm_teardown();
-
-#if defined(LED_NEOPIXEL) || defined(LED_RGB_RED_PIN)
-  neopixel_teardown();
-#endif
 
   // Stop RTC1 used by app_timer
   NVIC_DisableIRQ(RTC1_IRQn);
@@ -209,9 +167,6 @@ void led_pwm_duty_cycle(uint32_t led_index, uint16_t duty_cycle)
 }
 
 static uint32_t primary_cycle_length;
-#ifdef LED_SECONDARY_PIN
-static uint32_t secondary_cycle_length;
-#endif
 void led_tick() {
     uint32_t millis = _systick_count;
 
@@ -225,41 +180,21 @@ void led_tick() {
     duty_cycle = 0xff - duty_cycle;
     #endif
     led_pwm_duty_cycle(LED_PRIMARY, duty_cycle);
-
-    #ifdef LED_SECONDARY_PIN
-    cycle = millis % secondary_cycle_length;
-    half_cycle = secondary_cycle_length / 2;
-    if (cycle > half_cycle) {
-        cycle = secondary_cycle_length - cycle;
-    }
-    duty_cycle = 0x8f * cycle / half_cycle;
-    #if LED_STATE_ON == 1
-    duty_cycle = 0xff - duty_cycle;
-    #endif
-    led_pwm_duty_cycle(LED_SECONDARY, duty_cycle);
-    #endif
 }
 
-static uint32_t rgb_color;
-static bool temp_color_active = false;
 void led_state(uint32_t state)
 {
-    uint32_t new_rgb_color = rgb_color;
-    uint32_t temp_color = 0;
     switch (state) {
         case STATE_USB_MOUNTED:
-          new_rgb_color = 0x00ff00;
           primary_cycle_length = 3000;
           break;
 
         case STATE_BOOTLOADER_STARTED:
         case STATE_USB_UNMOUNTED:
-          new_rgb_color = 0xff0000;
           primary_cycle_length = 300;
           break;
 
         case STATE_WRITING_STARTED:
-          temp_color = 0xff0000;
           primary_cycle_length = 100;
           break;
 
@@ -269,184 +204,14 @@ void led_state(uint32_t state)
           break;
 
         case STATE_BLE_CONNECTED:
-          new_rgb_color = 0x0000ff;
-          #ifdef LED_SECONDARY_PIN
-          secondary_cycle_length = 3000;
-          #else
           primary_cycle_length = 3000;
-          #endif
           break;
 
         case STATE_BLE_DISCONNECTED:
-          new_rgb_color = 0xff00ff;
-          #ifdef LED_SECONDARY_PIN
-          secondary_cycle_length = 300;
-          #else
           primary_cycle_length = 300;
-          #endif
           break;
 
         default:
         break;
     }
-    uint8_t* final_color = NULL;
-    new_rgb_color &= BOARD_RGB_BRIGHTNESS;
-    if (temp_color != 0){
-        temp_color &= BOARD_RGB_BRIGHTNESS;
-        final_color = (uint8_t*)&temp_color;
-        temp_color_active = true;
-    } else if (new_rgb_color != rgb_color) {
-        final_color = (uint8_t*)&new_rgb_color;
-        rgb_color = new_rgb_color;
-    } else if (temp_color_active) {
-        final_color = (uint8_t*)&rgb_color;
-    }
-    #if defined(LED_NEOPIXEL) || defined(LED_RGB_RED_PIN)
-    if (final_color != NULL) {
-        neopixel_write(final_color);
-    }
-    #else
-    (void) final_color;
-    #endif
 }
-
-#ifdef LED_NEOPIXEL
-
-// WS2812B (rev B) timing is 0.4 and 0.8 us
-#define MAGIC_T0H               6UL | (0x8000) // 0.375us
-#define MAGIC_T1H              13UL | (0x8000) // 0.8125us
-#define CTOPVAL                20UL            // 1.25us
-
-#define BYTE_PER_PIXEL  3
-
-static uint16_t pixels_pattern[NEOPIXELS_NUMBER*BYTE_PER_PIXEL * 8 + 2];
-
-// use PWM1 for neopixel
-void neopixel_init(void)
-{
-  // To support both the SoftDevice + Neopixels we use the EasyDMA
-  // feature from the NRF25. However this technique implies to
-  // generate a pattern and store it on the memory. The actual
-  // memory used in bytes corresponds to the following formula:
-  //              totalMem = numBytes*8*2+(2*2)
-  // The two additional bytes at the end are needed to reset the
-  // sequence.
-  NRF_PWM_Type* pwm = NRF_PWM1;
-
-  // Set the wave mode to count UP
-  // Set the PWM to use the 16MHz clock
-  // Setting of the maximum count
-  // but keeping it on 16Mhz allows for more granularity just
-  // in case someone wants to do more fine-tuning of the timing.
-  nrf_pwm_configure(pwm, NRF_PWM_CLK_16MHz, NRF_PWM_MODE_UP, CTOPVAL);
-
-  // Disable loops, we want the sequence to repeat only once
-  nrf_pwm_loop_set(pwm, 0);
-
-  // On the "Common" setting the PWM uses the same pattern for the
-  // for supported sequences. The pattern is stored on half-word of 16bits
-  nrf_pwm_decoder_set(pwm, PWM_DECODER_LOAD_Common, PWM_DECODER_MODE_RefreshCount);
-
-  // The following settings are ignored with the current config.
-  nrf_pwm_seq_refresh_set(pwm, 0, 0);
-  nrf_pwm_seq_end_delay_set(pwm, 0, 0);
-
-  // The Neopixel implementation is a blocking algorithm. DMA
-  // allows for non-blocking operation. To "simulate" a blocking
-  // operation we enable the interruption for the end of sequence
-  // and block the execution thread until the event flag is set by
-  // the peripheral.
-  //    pwm->INTEN |= (PWM_INTEN_SEQEND0_Enabled<<PWM_INTEN_SEQEND0_Pos);
-
-  // PSEL must be configured before enabling PWM
-  nrf_pwm_pins_set(pwm, (uint32_t[] ) { LED_NEOPIXEL, 0xFFFFFFFFUL, 0xFFFFFFFFUL, 0xFFFFFFFFUL });
-
-  // Enable the PWM
-  nrf_pwm_enable(pwm);
-}
-
-void neopixel_teardown(void)
-{
-  uint8_t rgb[3] = { 0, 0, 0 };
-
-  NRFX_DELAY_US(50);  // wait for previous write is complete
-
-  neopixel_write(rgb);
-  NRFX_DELAY_US(50);  // wait for this write
-
-  pwm_teardown(NRF_PWM1);
-}
-
-// write 3 bytes color RGB to built-in neopixel
-void neopixel_write (uint8_t *pixels)
-{
-  // convert RGB to GRB
-  uint8_t grb[BYTE_PER_PIXEL] = {pixels[1], pixels[2], pixels[0]};
-  uint16_t pos = 0;    // bit position
-
-  // Set all neopixel to same value
-  for (uint16_t n = 0; n < NEOPIXELS_NUMBER; n++ )
-  {
-    for(uint8_t c = 0; c < BYTE_PER_PIXEL; c++)
-    {
-      uint8_t const pix = grb[c];
-
-      for ( uint8_t mask = 0x80; mask > 0; mask >>= 1 )
-      {
-        pixels_pattern[pos] = (pix & mask) ? MAGIC_T1H : MAGIC_T0H;
-        pos++;
-      }
-    }
-  }
-
-  // Zero padding to indicate the end of sequence
-  pixels_pattern[pos++] = 0 | (0x8000);    // Seq end
-  pixels_pattern[pos++] = 0 | (0x8000);    // Seq end
-
-  NRF_PWM_Type* pwm = NRF_PWM1;
-
-  nrf_pwm_seq_ptr_set(pwm, 0, pixels_pattern);
-  nrf_pwm_seq_cnt_set(pwm, 0, sizeof(pixels_pattern)/2);
-  nrf_pwm_event_clear(pwm, NRF_PWM_EVENT_SEQEND0);
-  nrf_pwm_task_trigger(pwm, NRF_PWM_TASK_SEQSTART0);
-
-  // blocking wait for sequence complete
-  while( !nrf_pwm_event_check(pwm, NRF_PWM_EVENT_SEQEND0) ) {}
-  nrf_pwm_event_clear(pwm, NRF_PWM_EVENT_SEQEND0);
-}
-#endif
-
-#if defined(LED_RGB_RED_PIN) && defined(LED_RGB_GREEN_PIN) && defined(LED_RGB_BLUE_PIN)
-
-#ifdef LED_SECONDARY_PIN
-#error "Cannot use secondary LED at the same time as an RGB status LED."
-#endif
-
-#define LED_RGB_RED   1
-#define LED_RGB_BLUE  2
-#define LED_RGB_GREEN 3
-
-void neopixel_init(void)
-{
-  led_pwm_init(LED_RGB_RED, LED_RGB_RED_PIN);
-  led_pwm_init(LED_RGB_GREEN, LED_RGB_GREEN_PIN);
-  led_pwm_init(LED_RGB_BLUE, LED_RGB_BLUE_PIN);
-}
-
-void neopixel_teardown(void)
-{
-  uint8_t rgb[3] = { 0, 0, 0 };
-  neopixel_write(rgb);
-  nrf_gpio_cfg_default(LED_RGB_RED_PIN);
-  nrf_gpio_cfg_default(LED_RGB_GREEN_PIN);
-  nrf_gpio_cfg_default(LED_RGB_BLUE_PIN);
-}
-
-// write 3 bytes color to a built-in neopixel
-void neopixel_write (uint8_t *pixels)
-{
-  led_pwm_duty_cycle(LED_RGB_RED, pixels[2]);
-  led_pwm_duty_cycle(LED_RGB_GREEN, pixels[1]);
-  led_pwm_duty_cycle(LED_RGB_BLUE, pixels[0]);
-}
-#endif

@@ -47,6 +47,8 @@ bool bootloader_app_is_valid(uint32_t app_addr);
  */
 uint32_t bootloader_dfu_start(uint32_t timeout_ms);
 
+void bootloader_run(uint32_t timeout_ms);
+
 /**@brief Function for exiting bootloader and booting into application.
  *
  * @details This function will disable SoftDevice and all interrupts before jumping to application.
