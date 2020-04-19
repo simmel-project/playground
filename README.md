@@ -1,5 +1,14 @@
 # Adafruit nRF52 Bootloader
 
+Building for the Pi:
+  sudo apt-get install gcc-arm-none-eabi libnewlib-arm-none-eabi  # needs about 1.7G free space
+  
+  git clone git@github.com:simmel-project/bootloader.git
+  cd bootloader/
+  git submodule init
+  git submodule update
+  make BOARD=simmel
+
 [![Build Status](https://github.com/adafruit/Adafruit_nRF52_Bootloader/workflows/Build/badge.svg)](https://github.com/adafruit/Adafruit_nRF52_Bootloader/actions)
 
 This is a CDC/DFU/UF2 bootloader for nRF52 boards.
