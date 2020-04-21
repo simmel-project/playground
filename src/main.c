@@ -259,12 +259,6 @@ int main(void)
     led_state(STATE_USB_UNMOUNTED);
     usb_init();
 
-    // Initiate an update of the firmware.
-    // APP_ERROR_CHECK( bootloader_dfu_start(0) );
-    // while (1) {
-    //   tud_task();
-    //   tud_cdc_write_flush();
-    // }
     bootloader_run(0);
 
     usb_teardown();
