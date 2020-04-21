@@ -130,8 +130,16 @@ void usb_desc_init(void)
 char const* string_desc_arr [] =
 {
   (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
+#ifdef USB_MANUFACTURER
   USB_MANUFACTURER,              // 1: Manufacturer
+#else
+  BLEDIS_MANUFACTURER,
+#endif
+#ifdef USB_MODEL
   USB_MODEL,                     // 2: Product
+#else
+  BLEDIS_MODEL,
+#endif
   desc_str_serial,               // 3: Serials, should use chip ID
   "nRF Serial",                  // 4: CDC Interface
   "nRF UF2",                     // 5: MSC Interface
