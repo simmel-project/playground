@@ -294,26 +294,6 @@ int main(void)
   NVIC_SystemReset();
 }
 
-
-// // Perform factory reset to erase Application + Data
-// void adafruit_factory_reset(void)
-// {
-//   led_state(STATE_FACTORY_RESET_STARTED);
-
-//   // clear all App Data if any
-//   if ( DFU_APP_DATA_RESERVED )
-//   {
-//     nrfx_nvmc_page_erase(APPDATA_ADDR_START);
-//   }
-
-//   // Only need to erase the 1st page of Application code to make it invalid
-//   nrfx_nvmc_page_erase(DFU_BANK_0_REGION_START);
-
-//   // back to normal
-//   led_state(STATE_FACTORY_RESET_FINISHED);
-// }
-
-
 //--------------------------------------------------------------------+
 // Error Handler
 //--------------------------------------------------------------------+
@@ -322,55 +302,4 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
   volatile uint32_t* ARM_CM_DHCSR =  ((volatile uint32_t*) 0xE000EDF0UL); /* Cortex M CoreDebug->DHCSR */
   if ( (*ARM_CM_DHCSR) & 1UL ) __asm("BKPT #0\n"); /* Only halt mcu if debugger is attached */
   NVIC_SystemReset();
-}
-
-void assert_nrf_callback (uint16_t line_num, uint8_t const * p_file_name)
-{
-  app_error_fault_handler(0xDEADBEEF, 0, 0);
-}
-
-/*------------------------------------------------------------------*/
-/* SoftDevice Event handler
- *------------------------------------------------------------------*/
-
-// process SOC event from SD
-uint32_t proc_soc(void)
-{
-  uint32_t soc_evt;
-  uint32_t err = sd_evt_get(&soc_evt);
-
-  if (NRF_SUCCESS == err)
-  {
-    pstorage_sys_event_handler(soc_evt);
-
-#ifdef NRF_USBD
-    extern void tusb_hal_nrf_power_event(uint32_t event);
-    /*------------- usb power event handler -------------*/
-    int32_t usbevt = (soc_evt == NRF_EVT_POWER_USB_DETECTED   ) ? NRFX_POWER_USB_EVT_DETECTED:
-                     (soc_evt == NRF_EVT_POWER_USB_POWER_READY) ? NRFX_POWER_USB_EVT_READY   :
-                     (soc_evt == NRF_EVT_POWER_USB_REMOVED    ) ? NRFX_POWER_USB_EVT_REMOVED : -1;
-
-    if ( usbevt >= 0) tusb_hal_nrf_power_event(usbevt);
-#endif
-  }
-
-  return err;
-}
-
-void ada_sd_task(void* evt_data, uint16_t evt_size)
-{
-  (void) evt_data;
-  (void) evt_size;
-
-  // process BLE and SOC until there is no more events
-  while( NRF_ERROR_NOT_FOUND != proc_soc() )
-  {
-
-  }
-}
-
-void SD_EVT_IRQHandler(void)
-{
-  // Use App Scheduler to defer handling code in non-isr context
-  app_sched_event_put(NULL, 0, ada_sd_task);
 }
