@@ -236,54 +236,23 @@ void bootloader_dfu_update_process(dfu_update_status_t update_status)
         m_update_status         = BOOTLOADER_SETTINGS_SAVING;
         bootloader_settings_save(&settings);
     }
-    // else if (update_status.status_code == DFU_UPDATE_SD_SWAPPED)
-    // {
-    //     if (p_bootloader_settings->bank_0 == BANK_VALID_SD)
-    //     {
-    //         settings.bank_0_crc     = 0;
-    //         settings.bank_0_size    = 0;
-    //         settings.bank_0         = BANK_INVALID_APP;
-    //     }
-    //     // This handles cases where SoftDevice was not updated, hence bank0 keeps its settings.
-    //     else
-    //     {
-    //         settings.bank_0         = p_bootloader_settings->bank_0;
-    //         settings.bank_0_crc     = p_bootloader_settings->bank_0_crc;
-    //         settings.bank_0_size    = p_bootloader_settings->bank_0_size;
-    //     }
-
-    //     settings.bank_1         = BANK_INVALID_APP;
-    //     settings.sd_image_size  = 0;
-    //     settings.bl_image_size  = 0;
-    //     settings.app_image_size = 0;
-
-    //     m_update_status         = BOOTLOADER_SETTINGS_SAVING;
-    //     bootloader_settings_save(&settings);
-    // }
     else if (update_status.status_code == DFU_TIMEOUT)
     {
-        // // Timeout has occurred. Close the connection with the DFU Controller.
-        // uint32_t err_code;
-        // // if ( is_ota() )
-        // // {
-        // //   err_code = dfu_transport_ble_close();
-        // // }else
-        // // {
-        //   err_code = dfu_transport_serial_close();
-        // // }
-        // APP_ERROR_CHECK(err_code);
-
+        // Timeout has occurred. Close the connection with the DFU Controller.
+        uint32_t err_code;
+        err_code = dfu_transport_serial_close();
+        APP_ERROR_CHECK(err_code);
         m_update_status = BOOTLOADER_TIMEOUT;
     }
-    // else if (update_status.status_code == DFU_BANK_0_ERASED)
-    // {
-    //     settings.bank_0_crc  = 0;
-    //     settings.bank_0_size = 0;
-    //     settings.bank_0      = BANK_INVALID_APP;
-    //     settings.bank_1      = p_bootloader_settings->bank_1;
+    else if (update_status.status_code == DFU_BANK_0_ERASED)
+    {
+        settings.bank_0_crc  = 0;
+        settings.bank_0_size = 0;
+        settings.bank_0      = BANK_INVALID_APP;
+        settings.bank_1      = p_bootloader_settings->bank_1;
 
-    //     bootloader_settings_save(&settings);
-    // }
+        bootloader_settings_save(&settings);
+    }
     else if (update_status.status_code == DFU_RESET)
     {
         m_update_status = BOOTLOADER_RESET;
