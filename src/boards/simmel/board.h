@@ -29,12 +29,14 @@
 /* LED
  *------------------------------------------------------------------*/
 #define LEDS_NUMBER         1
-// #define LED_PRIMARY_PIN     4
-#define LED_PRIMARY_PIN     14
+#define LED_PRIMARY_PIN     6
 #define LED_STATE_ON        0
 
-#define LOOPBACK_TX_PIN         12
-#define LOOPBACK_RX_PIN         11
+//--------------------------------------------------------------------+
+// Short these together to force bootloader entry
+//--------------------------------------------------------------------+
+#define LOOPBACK_TX_PIN         32
+#define LOOPBACK_RX_PIN         24
 
 //--------------------------------------------------------------------+
 // USB
