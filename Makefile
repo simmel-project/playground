@@ -204,9 +204,9 @@ INC_PATHS = $(addprefix -I,$(IPATH))
 
 # Debugging/Optimization
 ifeq ($(DEBUG), 1)
-	CFLAGS += -Og -ggdb
+	CFLAGS += -Og -ggdb3
 else
-	CFLAGS += -Os
+	CFLAGS += -Os -ggdb3
 endif
 
 #flags common to all targets
@@ -307,7 +307,10 @@ endif
 .PHONY: all clean flash dfu-flash sd gdbflash gdb
 
 # default target to build
-all: $(BUILD)/$(OUT_FILE)-nosd.out $(BUILD)/$(MERGED_FILE).hex
+all: $(BUILD)/$(OUT_FILE)-nosd.out
+	@echo SoftDevice hex file: $(SD_HEX)
+	@echo Bootloader hex file: $(BUILD)/$(OUT_FILE)-nosd.out
+	@echo Load these two files using openocd
 
 #------------------- Flash target -------------------
 
@@ -373,7 +376,7 @@ $(BUILD)/$(OUT_FILE)-nosd.hex: $(BUILD)/$(OUT_FILE)-nosd.out
 # merge bootloader and sd hex together
 $(BUILD)/$(MERGED_FILE).hex: $(BUILD)/$(OUT_FILE)-nosd.hex
 	@echo CR $(MERGED_FILE).hex
-	@mergehex.exe -q -m $< $(SD_HEX) -o $@
+	@mergehex -q -m $< $(SD_HEX) -o $@
 
 ## Create pkg zip file for bootloader+SD combo to use with DFU Serial
 .PHONY: genpkg
