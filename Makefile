@@ -307,10 +307,12 @@ endif
 .PHONY: all clean flash dfu-flash sd gdbflash gdb
 
 # default target to build
-all: $(BUILD)/$(OUT_FILE)-nosd.out
-	@echo SoftDevice hex file: $(SD_HEX)
-	@echo Bootloader hex file: $(BUILD)/$(OUT_FILE)-nosd.out
-	@echo Load these two files using openocd
+all: $(BUILD)/$(OUT_FILE)-nosd.hex
+	@echo "SoftDevice hex file:"
+	@echo "    $(SD_HEX)"
+	@echo "Bootloader hex file:"
+	@echo "    $(BUILD)/$(OUT_FILE)-nosd.hex"
+	@echo "Load these two files using openocd."
 
 #------------------- Flash target -------------------
 
