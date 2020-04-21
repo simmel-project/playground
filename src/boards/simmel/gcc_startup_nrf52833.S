@@ -385,7 +385,7 @@ Default_Handler:
     IRQ  COMP_LPCOMP_IRQHandler
 //    IRQ  SWI0_EGU0_IRQHandler
     IRQ  SWI1_EGU1_IRQHandler
-//    IRQ  SWI2_EGU2_IRQHandler
+    IRQ  SWI2_EGU2_IRQHandler
     IRQ  SWI3_EGU3_IRQHandler
     IRQ  SWI4_EGU4_IRQHandler
     IRQ  SWI5_EGU5_IRQHandler
