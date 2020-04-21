@@ -155,6 +155,7 @@ void softdev_mbr_init(void)
 // Send data out one pin and look for it coming back
 // on the other.  Toggle it up and down.
 static bool check_loopback(void) {
+#if defined(LOOPBACK_TX_PIN) && defined(LOOPBACK_RX_PIN)
   unsigned int i = 0;
   nrf_gpio_cfg_output(LOOPBACK_TX_PIN);
   nrf_gpio_cfg_input(LOOPBACK_RX_PIN, NRF_GPIO_PIN_NOPULL);
@@ -176,6 +177,9 @@ static bool check_loopback(void) {
     }
   }
   return true;
+#else
+  return false;
+#endif
 }
 
 int main(void)
