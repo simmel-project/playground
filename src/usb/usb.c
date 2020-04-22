@@ -97,7 +97,13 @@ void usb_teardown(void)
 {
   if ( NRF_USBD->ENABLE )
   {
-    // Abort all transfers
+    // Wait for transfers to finish.  This works around an issue wherein we
+    // disconnect while there are still pipelined transfers going.
+    unsigned int i;
+    for (i = 0; i < 100; i++) {
+      tud_task();
+      NRFX_DELAY_MS(1);
+    }
 
     // Disable pull up
     nrf_usbd_pullup_disable(NRF_USBD);
