@@ -13,21 +13,8 @@ TUSB_PATH    = lib/tinyusb/src
 NRFX_PATH    = lib/nrfx
 SD_PATH      = lib/softdevice/$(SD_FILENAME)
 
-SD_VERSION   = 6.1.1
-SD_FILENAME  = $(SD_NAME)_nrf52_$(SD_VERSION)
-SD_HEX       = $(SD_PATH)/$(SD_FILENAME)_softdevice.hex
-
-# linker by MCU and SoftDevice eg. nrf52840_s140_v6.ld
-LD_FILE      = linker/$(MCU_SUB_VARIANT)_$(SD_NAME)_v$(word 1, $(subst ., ,$(SD_VERSION))).ld
-
 GIT_VERSION = $(shell git describe --dirty --always --tags)
 GIT_SUBMODULE_VERSIONS = $(shell git submodule status | cut -d' ' -f3,4 | paste -s -d" " -)
-
-# compiled file name
-OUT_FILE = $(BOARD)_bootloader-$(GIT_VERSION)
-
-# merged file = compiled + sd
-MERGED_FILE = $(OUT_FILE)_$(SD_NAME)_$(SD_VERSION)
 
 #------------------------------------------------------------------------------
 # Tool configure
@@ -74,17 +61,32 @@ ifeq ($(MCU_SUB_VARIANT),nrf52)
   SD_NAME = s132
   DFU_DEV_REV = 0xADAF
   CFLAGS += -DNRF52 -DNRF52832_XXAA -DS132
+  SD_VERSION = 6.1.1
 else ifeq ($(MCU_SUB_VARIANT),nrf52833)
   SD_NAME = s140
   DFU_DEV_REV = 52840
   CFLAGS += -DNRF52833_XXAA -DS140
+  SD_VERSION = 7.0.1
 else ifeq ($(MCU_SUB_VARIANT),nrf52840)
   SD_NAME = s140
   DFU_DEV_REV = 52840
   CFLAGS += -DNRF52840_XXAA -DS140
+  SD_VERSION = 6.1.1
 else
   $(error Sub Variant $(MCU_SUB_VARIANT) is unknown)
 endif
+
+SD_FILENAME  = $(SD_NAME)_nrf52_$(SD_VERSION)
+SD_HEX       = $(SD_PATH)/$(SD_FILENAME)_softdevice.hex
+
+# linker by MCU and SoftDevice eg. nrf52840_s140_v6.ld
+LD_FILE      = linker/$(MCU_SUB_VARIANT)_$(SD_NAME)_v$(word 1, $(subst ., ,$(SD_VERSION))).ld
+
+# compiled file name
+OUT_FILE = $(BOARD)_bootloader-$(GIT_VERSION)
+
+# merged file = compiled + sd
+MERGED_FILE = $(OUT_FILE)_$(SD_NAME)_$(SD_VERSION)
 
 #------------------------------------------------------------------------------
 # SOURCE FILES
