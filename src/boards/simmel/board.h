@@ -47,5 +47,7 @@
 #define UF2_PRODUCT_NAME    "Simmel"
 #define UF2_BOARD_ID        "nRF52833-simmel-v1"
 #define UF2_INDEX_URL       "https://github.com/simmel-project/"
+#define USB_DESC_VID        0xC051
+#define USB_DESC_UF2_PID    0x1209
 
 #endif // SIMMEL_H
