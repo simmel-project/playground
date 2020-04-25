@@ -30,7 +30,7 @@
  *------------------------------------------------------------------*/
 #define LEDS_NUMBER         1
 #define LED_PRIMARY_PIN     6
-#define LED_STATE_ON        0
+#define LED_STATE_ON        1
 
 //--------------------------------------------------------------------+
 // Short these together to force bootloader entry
