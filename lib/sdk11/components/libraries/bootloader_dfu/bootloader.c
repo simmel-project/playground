@@ -113,9 +113,6 @@ static void wait_for_events(void)
 {
   for ( ;; )
   {
-    // Wait in low power state for any events.
-//    uint32_t err_code = sd_app_evt_wait();
-//    APP_ERROR_CHECK(err_code);
 
     // Feed all Watchdog just in case application enable it
     // WDT cannot be disabled once started. It even last through soft reset (NVIC Reset)
@@ -281,12 +278,6 @@ uint32_t bootloader_init(void)
 
 void bootloader_run(uint32_t timeout_ms)
 {
-    // uint32_t err_code;
-
-    // // Clear swap if banked update is used.
-    // err_code = dfu_init();
-    // VERIFY_SUCCESS(err_code);
-
     // timeout_ms > 0 is forced startup DFU
     if ( timeout_ms )
     {
@@ -295,8 +286,6 @@ void bootloader_run(uint32_t timeout_ms)
       app_timer_create(&_dfu_startup_timer, APP_TIMER_MODE_SINGLE_SHOT, dfu_startup_timer_handler);
       app_timer_start(_dfu_startup_timer, APP_TIMER_TICKS(timeout_ms), NULL);
     }
-
-    // err_code = dfu_transport_serial_update_start();
 
     wait_for_events();
 
@@ -332,16 +321,6 @@ void bootloader_app_start(uint32_t app_addr)
     APP_ERROR_CHECK ( sd_softdevice_disable() );
 
     interrupts_disable();
-
-#if 0 // may need set forward irq
-    sd_mbr_command_t command =
-    {
-        .command = SD_MBR_COMMAND_IRQ_FORWARD_ADDRESS_SET,
-        .params.irq_forward_address_set.address = MBR_SIZE,
-    };
-
-    sd_mbr_command(&command);
-#endif
 
     APP_ERROR_CHECK( sd_softdevice_vector_table_base_set(CODE_REGION_1_START) );
 
