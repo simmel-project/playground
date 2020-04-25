@@ -9,8 +9,8 @@
 #define FLASH_SIZE         (USER_FLASH_END-USER_FLASH_START) // Max flash size
 
 // Only allow to write application TODO dynamic depending on SD size
-#define USER_FLASH_START   SD_FLASH_SIZE
-#define USER_FLASH_END     0x3D000 // Fat Fs start here
+#define USER_FLASH_START   SD_FLASH_SIZE + 0x1000
+#define USER_FLASH_END     0x7D000 // Fat Fs start here
 
 #define FLASH_PAGE_SIZE    4096
 
