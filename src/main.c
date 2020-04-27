@@ -49,10 +49,40 @@
 #include "nrfx_nvmc.h"
 #include "nrfx_spi.h"
 
-__attribute__((noinline))
+#define SPI_MOSI 9
+#define SPI_MISO (4) // P1
+#define SPI_SCK 10
+#define SPI_CSn (6) // P1
 void spi_init(void) {
+  NRF_P1->OUTSET = (1 << SPI_CSn);
+  NRF_P1->DIRSET = (1 << SPI_CSn);
+
+  NRF_P0->DIRSET = (1 << SPI_SCK) | (1 << SPI_MOSI);
+  NRF_P1->DIRCLR = (1 << SPI_MISO);
+
   NRF_SPI1->ENABLE = 1UL;
+  NRF_SPI1->PSELSCK = SPI_SCK;
+  NRF_SPI1->PSELMOSI = SPI_MOSI;
+  NRF_SPI1->PSELMISO = 32+SPI_MISO;
 }
+
+void spi_select(void) {
+  NRF_P1->OUTCLR = (1 << SPI_CSn);
+}
+
+uint8_t spi_xfer(uint8_t data) {
+  NRF_SPI1->TXD = data;
+  while (NRF_SPI1->EVENTS_READY == 0)
+    ;
+  NRF_SPI1->EVENTS_READY = 0;
+  return NRF_SPI1->RXD;
+}
+
+void spi_deselect(void) {
+  NRF_P1->OUTSET = (1 << SPI_CSn);
+}
+
+__attribute__((used)) uint8_t id[3];
 
 int main(void)
 {
@@ -69,6 +99,19 @@ int main(void)
   NRF_CLOCK->TASKS_LFCLKSTART = 1UL;
 
   spi_init();
+
+  // Get the SPI ID, just to make sure things are working.
+  spi_select();
+  spi_xfer(0x9f);
+  id[0] = spi_xfer(0xff);
+  id[1] = spi_xfer(0xff);
+  id[2] = spi_xfer(0xff);
+  spi_deselect();
+
+  // Issue "Deep Power Down"
+  spi_select();
+  spi_xfer(0xb9);
+  spi_deselect();
 
   while (1) {
     asm("wfi");
