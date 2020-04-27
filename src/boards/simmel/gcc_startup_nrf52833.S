@@ -322,11 +322,11 @@ UsageFault_Handler:
     .size   UsageFault_Handler, . - UsageFault_Handler
 
 
-//    .weak   SVC_Handler
-//    .type   SVC_Handler, %function
-//SVC_Handler:
-//    b       .
-//    .size   SVC_Handler, . - SVC_Handler
+    .weak   SVC_Handler
+    .type   SVC_Handler, %function
+SVC_Handler:
+    b       .
+    .size   SVC_Handler, . - SVC_Handler
 
 
     .weak   DebugMon_Handler
@@ -343,11 +343,11 @@ PendSV_Handler:
     .size   PendSV_Handler, . - PendSV_Handler
 
 
-//    .weak   SysTick_Handler
-//    .type   SysTick_Handler, %function
-//SysTick_Handler:
-//    b       .
-//    .size   SysTick_Handler, . - SysTick_Handler
+    .weak   SysTick_Handler
+    .type   SysTick_Handler, %function
+SysTick_Handler:
+    b       .
+    .size   SysTick_Handler, . - SysTick_Handler
 
 
 /* IRQ Handlers */
@@ -363,7 +363,7 @@ Default_Handler:
     .set    \handler, Default_Handler
     .endm
 
-//    IRQ  POWER_CLOCK_IRQHandler
+    IRQ  POWER_CLOCK_IRQHandler
     IRQ  RADIO_IRQHandler
     IRQ  UARTE0_UART0_IRQHandler
     IRQ  SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0_IRQHandler
@@ -380,10 +380,10 @@ Default_Handler:
     IRQ  ECB_IRQHandler
     IRQ  CCM_AAR_IRQHandler
     IRQ  WDT_IRQHandler
-//    IRQ  RTC1_IRQHandler
+    IRQ  RTC1_IRQHandler
     IRQ  QDEC_IRQHandler
     IRQ  COMP_LPCOMP_IRQHandler
-//    IRQ  SWI0_EGU0_IRQHandler
+    IRQ  SWI0_EGU0_IRQHandler
     IRQ  SWI1_EGU1_IRQHandler
     IRQ  SWI2_EGU2_IRQHandler
     IRQ  SWI3_EGU3_IRQHandler
@@ -400,7 +400,7 @@ Default_Handler:
     IRQ  RTC2_IRQHandler
     IRQ  I2S_IRQHandler
     IRQ  FPU_IRQHandler
-//    IRQ  USBD_IRQHandler
+    IRQ  USBD_IRQHandler
     IRQ  UARTE1_IRQHandler
     IRQ  PWM3_IRQHandler
     IRQ  SPIM3_IRQHandler

@@ -38,6 +38,7 @@
 #include <string.h>
 #include <stddef.h>
 
+#include "nrfx_config.h"
 #include "nrfx.h"
 #include "nrf_clock.h"
 #include "nrfx_power.h"
@@ -56,8 +57,6 @@
 #include "nrf_gpio.h"
 #include "ble.h"
 #include "nrf.h"
-#include "ble_hci.h"
-#include "app_scheduler.h"
 #include "nrf_error.h"
 
 #include "boards.h"
@@ -67,239 +66,31 @@
 #include "nrf_mbr.h"
 #include "pstorage.h"
 #include "nrfx_nvmc.h"
+#include "nrfx_spi.h"
 
-
-#ifdef NRF_USBD
-#include "nrf_usbd.h"
-#include "tusb.h"
-
-void usb_init(void);
-void usb_teardown(void);
-
-#else
-
-#define usb_init()       led_state(STATE_USB_MOUNTED) // mark nrf52832 as mounted
-#define usb_teardown()
-
-#endif
-
-/*
- * Blinking patterns:
- * - DFU Serial     : LED Status blink
- * - DFU OTA        : LED Status & Conn blink at the same time
- * - DFU Flashing   : LED Status blink 2x fast
- * - Factory Reset  : LED Status blink 2x fast
- * - Fatal Error    : LED Status & Conn blink one after another
- */
-
-/* Magic that written to NRF_POWER->GPREGRET by application when it wish to go into DFU
- * - BOOTLOADER_DFU_OTA_MAGIC used by BLEDfu service : SD is already init
- * - BOOTLOADER_DFU_OTA_FULLRESET_MAGIC entered by soft reset : SD is not init
- * - BOOTLOADER_DFU_SERIAL_MAGIC entered by soft reset : SD is not init
- *
- * Note: for DFU_MAGIC_OTA_APPJUM Softdevice must not initialized.
- * since it is already in application. In all other case of OTA SD must be initialized
- */
-#define DFU_MAGIC_OTA_APPJUM            BOOTLOADER_DFU_START             // 0xB1
-#define DFU_MAGIC_OTA_RESET             0xA8
-#define DFU_MAGIC_SERIAL_ONLY_RESET     0x4e
-#define DFU_MAGIC_UF2_RESET             0x57
-
-#define DFU_DBL_RESET_MAGIC             0x5A1AD5      // SALADS
-#define DFU_DBL_RESET_APP               0x4ee5677e
-#define DFU_DBL_RESET_DELAY             500
-#define DFU_DBL_RESET_MEM               0x20007F7C
-
-#define BOOTLOADER_VERSION_REGISTER     NRF_TIMER2->CC[0]
-#define DFU_SERIAL_STARTUP_INTERVAL     1000
-
-// Allow for using reset button essentially to swap between application and bootloader.
-// This is controlled by a flag in the app and is the behavior of CPX and all Arcade boards when using MakeCode.
-#define APP_ASKS_FOR_SINGLE_TAP_RESET() (*((uint32_t*)(USER_FLASH_START + 0x200)) == 0x87eeb07c)
-
-// These value must be the same with one in dfu_transport_ble.c
-#define BLEGAP_EVENT_LENGTH             6
-#define BLEGATT_ATT_MTU_MAX             247
-enum { BLE_CONN_CFG_HIGH_BANDWIDTH = 1 };
-
-// Adafruit for factory reset
-#define APPDATA_ADDR_START              (BOOTLOADER_REGION_START-DFU_APP_DATA_RESERVED)
-
-#ifdef NRF52840_XXAA
-  // Flash 1024 KB
-  STATIC_ASSERT( APPDATA_ADDR_START == 0xED000);
-#else
-  // Flash 512 KB
-  STATIC_ASSERT( APPDATA_ADDR_START == 0x73000);
-#endif
-
-
-// void adafruit_factory_reset(void);
-
-uint32_t* dbl_reset_mem = ((uint32_t*)  DFU_DBL_RESET_MEM );
-
-// true if ble, false if serial
-bool _ota_connected = false;
-
-bool is_ota(void)
-{
-  return false;
-}
-
-void softdev_mbr_init(void)
-{
-  sd_mbr_command_t com = { .command = SD_MBR_COMMAND_INIT_SD };
-  sd_mbr_command(&com);
-}
-
-// Send data out one pin and look for it coming back
-// on the other.  Toggle it up and down.
-static bool check_loopback(void) {
-#if defined(LOOPBACK_TX_PIN) && defined(LOOPBACK_RX_PIN)
-  unsigned int i = 0;
-  nrf_gpio_cfg_output(LOOPBACK_TX_PIN);
-  nrf_gpio_cfg_input(LOOPBACK_RX_PIN, NRF_GPIO_PIN_NOPULL);
-
-  for (i = 0; i < 16; i++) {
-    if ((i & 1) == 0) {
-      nrf_gpio_pin_clear(LOOPBACK_TX_PIN);
-      // Dummy read to force sync
-      (void)nrf_gpio_pin_read(LOOPBACK_TX_PIN);
-      if (nrf_gpio_pin_read(LOOPBACK_RX_PIN))
-        return false;
-    }
-    else {
-      nrf_gpio_pin_set(LOOPBACK_TX_PIN);
-      // Dummy read to force sync
-      (void)nrf_gpio_pin_read(LOOPBACK_TX_PIN);
-      if (!nrf_gpio_pin_read(LOOPBACK_RX_PIN))
-        return false;
-    }
-  }
-  return true;
-#else
-  return false;
-#endif
+__attribute__((noinline))
+void spi_init(void) {
+  NRF_SPI1->ENABLE = 1UL;
 }
 
 int main(void)
 {
-  // SD is already Initialized in case of BOOTLOADER_DFU_OTA_MAGIC
-  bool sd_inited = (NRF_POWER->GPREGRET == DFU_MAGIC_OTA_APPJUM);
+  // board_init();
 
-  // Serial only mode
-  // bool serial_only_dfu = (NRF_POWER->GPREGRET == DFU_MAGIC_SERIAL_ONLY_RESET);
+  // // Reset Board
+  // board_teardown();
 
-  // Pins are shorted together
-  bool loopback_shorted = check_loopback();
+  NRF_POWER->DCDCEN = 1UL;
 
-  // start either serial, uf2 or ble
-  bool dfu_start = loopback_shorted || (NRF_POWER->GPREGRET == DFU_MAGIC_UF2_RESET) ||
-                    (((*dbl_reset_mem) == DFU_DBL_RESET_MAGIC) && (NRF_POWER->RESETREAS & POWER_RESETREAS_RESETPIN_Msk));
+  // Switch to the lfclk
+  NRF_CLOCK->TASKS_LFCLKSTOP = 1UL;
+  NRF_CLOCK->LFCLKSRC = CLOCK_LFCLKSRC_SRC_Xtal;
+  NRF_CLOCK->TASKS_LFCLKSTART = 1UL;
 
+  spi_init();
 
-  // Clear GPREGRET if it is our values
-  if (dfu_start) NRF_POWER->GPREGRET = 0;
-
-  // Save bootloader version to pre-defined register, retrieved by application
-  BOOTLOADER_VERSION_REGISTER = (MK_BOOTLOADER_VERSION);
-
-  // This check ensures that the defined fields in the bootloader corresponds with actual setting in the chip.
-  APP_ERROR_CHECK_BOOL(*((uint32_t *)NRF_UICR_BOOT_START_ADDRESS) == BOOTLOADER_REGION_START);
-
-  board_init();
-  bootloader_init();
-
-  led_state(STATE_BOOTLOADER_STARTED);
-
-  // // When updating SoftDevice, bootloader will reset before swapping SD
-  // if (bootloader_dfu_sd_in_progress())
-  // {
-  //   led_state(STATE_WRITING_STARTED);
-
-  //   APP_ERROR_CHECK( bootloader_dfu_sd_update_continue() );
-  //   APP_ERROR_CHECK( bootloader_dfu_sd_update_finalize() );
-
-  //   led_state(STATE_WRITING_FINISHED);
-  // }
-
-  /*------------- Determine DFU mode (Serial, OTA, FRESET or normal) -------------*/
-  // DFU button pressed
-  // dfu_start  = dfu_start || button_pressed(BUTTON_DFU);
-
-  bool const valid_app = bootloader_app_is_valid(DFU_BANK_0_REGION_START);
-  bool const just_start_app = valid_app && !dfu_start && (*dbl_reset_mem) == DFU_DBL_RESET_APP;
-
-  if (!just_start_app && APP_ASKS_FOR_SINGLE_TAP_RESET())
-    dfu_start = 1;
-
-  // App mode: register 1st reset and DFU startup (nrf52832)
-  if ( ! (just_start_app || dfu_start || !valid_app) )
-  {
-    // Register our first reset for double reset detection
-    (*dbl_reset_mem) = DFU_DBL_RESET_MAGIC;
-
-// #ifdef NRF52832_XXAA
-//     /* Even DFU is not active, we still force an 1000 ms dfu serial mode when startup
-//      * to support auto programming from Arduino IDE
-//      *
-//      * Note: Supposedly during this time if RST is press, it will count as double reset.
-//      * However Double Reset WONT work with nrf52832 since its SRAM got cleared anyway.
-//      */
-//     bootloader_dfu_start(DFU_SERIAL_STARTUP_INTERVAL);
-// #else
-//     // if RST is pressed during this delay --> if will enter dfu
-//     NRFX_DELAY_MS(DFU_DBL_RESET_DELAY);
-// #endif
+  while (1) {
+    asm("wfi");
   }
-
-  if (APP_ASKS_FOR_SINGLE_TAP_RESET())
-    (*dbl_reset_mem) = DFU_DBL_RESET_APP;
-  else
-    (*dbl_reset_mem) = 0;
-
-  if ( dfu_start || !valid_app)
-  {
-    led_state(STATE_USB_UNMOUNTED);
-    usb_init();
-
-    bootloader_run(0);
-
-    usb_teardown();
-  }
-
-  // // Adafruit Factory reset
-  // if ( !button_pressed(BUTTON_DFU) && button_pressed(BUTTON_FRESET) )
-  // {
-    // adafruit_factory_reset();
-  // }
-
-  // Reset Board
-  board_teardown();
-
-  // Jump to application if valid
-  if (bootloader_app_is_valid(DFU_BANK_0_REGION_START) && !bootloader_dfu_sd_in_progress())
-  {
-    // MBR must be init before start application
-    if ( !sd_inited ) softdev_mbr_init();
-
-    // clear in case we kept DFU_DBL_RESET_APP there
-    (*dbl_reset_mem) = 0;
-
-    // Select a bank region to use as application region.
-    // @note: Only applications running from DFU_BANK_0_REGION_START is supported.
-    bootloader_app_start(DFU_BANK_0_REGION_START);
-  }
-
-  NVIC_SystemReset();
-}
-
-//--------------------------------------------------------------------+
-// Error Handler
-//--------------------------------------------------------------------+
-void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
-{
-  volatile uint32_t* ARM_CM_DHCSR =  ((volatile uint32_t*) 0xE000EDF0UL); /* Cortex M CoreDebug->DHCSR */
-  if ( (*ARM_CM_DHCSR) & 1UL ) __asm("BKPT #0\n"); /* Only halt mcu if debugger is attached */
   NVIC_SystemReset();
 }

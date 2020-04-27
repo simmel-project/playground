@@ -42,6 +42,7 @@ GDB_BMP = $(GDB) -ex 'target extended-remote $(BMP_PORT)' -ex 'monitor swdp_scan
 #---------------------------------
 # Select the board to build
 #---------------------------------
+BOARD ?= simmel
 BOARD_LIST = $(sort $(subst src/boards/,,$(wildcard src/boards/*)))
 
 ifeq ($(filter $(BOARD),$(BOARD_LIST)),)
@@ -83,7 +84,7 @@ SD_HEX       = $(SD_PATH)/$(SD_FILENAME)_softdevice.hex
 LD_FILE      = linker/$(MCU_SUB_VARIANT)_$(SD_NAME)_v$(word 1, $(subst ., ,$(SD_VERSION))).ld
 
 # compiled file name
-OUT_FILE = $(BOARD)_bootloader-$(GIT_VERSION)
+OUT_FILE = power-test
 
 # merged file = compiled + sd
 MERGED_FILE = $(OUT_FILE)_$(SD_NAME)_$(SD_VERSION)
@@ -102,56 +103,6 @@ C_SRC += $(wildcard src/boards/$(BOARD)/*.c)
 C_SRC += $(NRFX_PATH)/drivers/src/nrfx_power.c
 C_SRC += $(NRFX_PATH)/drivers/src/nrfx_nvmc.c
 C_SRC += $(NRFX_PATH)/mdk/system_$(MCU_SUB_VARIANT).c
-
-# SDK 11 files: serial + OTA DFU
-C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/bootloader.c
-C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/bootloader_settings.c
-C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/bootloader_util.c
-# C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_transport_serial.c
-# C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_transport_ble.c
-# C_SRC += $(SDK11_PATH)/libraries/bootloader_dfu/dfu_single_bank.c
-# C_SRC += $(SDK11_PATH)/ble/ble_services/ble_dfu/ble_dfu.c
-# C_SRC += $(SDK11_PATH)/ble/ble_services/ble_dis/ble_dis.c
-C_SRC += $(SDK11_PATH)/drivers_nrf/pstorage/pstorage_raw.c
-
-# Latest SDK files: peripheral drivers
-C_SRC += $(SDK_PATH)/libraries/timer/app_timer.c
-C_SRC += $(SDK_PATH)/libraries/scheduler/app_scheduler.c
-C_SRC += $(SDK_PATH)/libraries/util/app_error.c
-C_SRC += $(SDK_PATH)/libraries/util/app_util_platform.c
-C_SRC += $(SDK_PATH)/libraries/crc16/crc16.c
-# C_SRC += $(SDK_PATH)/libraries/hci/hci_mem_pool.c
-# C_SRC += $(SDK_PATH)/libraries/hci/hci_slip.c
-# C_SRC += $(SDK_PATH)/libraries/hci/hci_transport.c
-C_SRC += $(SDK_PATH)/libraries/util/nrf_assert.c
-
-# UART or USB Serial
-ifeq ($(MCU_SUB_VARIANT),nrf52)
-
-# C_SRC += $(SDK_PATH)/libraries/uart/app_uart.c
-# C_SRC += $(SDK_PATH)/drivers_nrf/uart/nrf_drv_uart.c
-# C_SRC += $(SDK_PATH)/drivers_nrf/common/nrf_drv_common.c
-
-IPATH += $(SDK11_PATH)/libraries/util
-IPATH += $(SDK_PATH)/drivers_nrf/common
-IPATH += $(SDK_PATH)/drivers_nrf/uart
-
-else
-
-# USB Application ( MSC + UF2 )
-C_SRC += $(wildcard src/usb/*.c)
-C_SRC += $(wildcard src/usb/uf2/*.c)
-
-# TinyUSB stack
-C_SRC += $(TUSB_PATH)/portable/nordic/nrf5x/dcd_nrf5x.c
-C_SRC += $(TUSB_PATH)/common/tusb_fifo.c
-C_SRC += $(TUSB_PATH)/device/usbd.c
-C_SRC += $(TUSB_PATH)/device/usbd_control.c
-C_SRC += $(TUSB_PATH)/class/cdc/cdc_device.c
-C_SRC += $(TUSB_PATH)/class/msc/msc_device.c
-C_SRC += $(TUSB_PATH)/tusb.c
-
-endif
 
 #------------------------------------------------------------------------------
 # Assembly Files
@@ -342,7 +293,7 @@ gdbflash: $(BUILD)/$(MERGED_FILE).hex
 	@echo Flashing: $<
 	@$(GDB_BMP) -nx --batch -ex 'load $<' -ex 'compare-sections' -ex 'kill'
 
-gdb: $(BUILD)/$(OUT_FILE)-nosd.out
+gdb: $(BUILD)/$(OUT_FILE)-nosd.elf
 	$(GDB_BMP) $<
 
 #------------------- Compile rules -------------------
@@ -365,15 +316,15 @@ $(BUILD)/%.o: %.S
 	@$(CC) -x assembler-with-cpp $(ASFLAGS) $(INC_PATHS) -c -o $@ $<
 
 # Link
-$(BUILD)/$(OUT_FILE)-nosd.out: $(BUILD) $(OBJECTS)
-	@echo LD $(OUT_FILE)-nosd.out
+$(BUILD)/$(OUT_FILE)-nosd.elf: $(BUILD) $(OBJECTS)
+	@echo LD $(OUT_FILE)-nosd.elf
 	@$(CC) -o $@ $(LDFLAGS) $(OBJECTS) -Wl,--start-group $(LIBS) -Wl,--end-group
 	@$(SIZE) $@
 
 #------------------- Binary generator -------------------
 
-## Create binary .hex file from the .out file
-$(BUILD)/$(OUT_FILE)-nosd.hex: $(BUILD)/$(OUT_FILE)-nosd.out
+## Create binary .hex file from the .elf file
+$(BUILD)/$(OUT_FILE)-nosd.hex: $(BUILD)/$(OUT_FILE)-nosd.elf
 	@echo CR $(OUT_FILE)-nosd.hex
 	@$(OBJCOPY) -O ihex $< $@
 
