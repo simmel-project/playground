@@ -44,27 +44,8 @@
 #include "nrfx_power.h"
 #include "nrfx_pwm.h"
 
-#include "nordic_common.h"
-#include "sdk_common.h"
-#include "dfu_transport.h"
-#include "bootloader.h"
-#include "bootloader_util.h"
-
 #include "nrf.h"
-#include "nrf_soc.h"
-#include "nrf_nvic.h"
-#include "app_error.h"
-#include "nrf_gpio.h"
-#include "ble.h"
-#include "nrf.h"
-#include "nrf_error.h"
 
-#include "boards.h"
-#include "uf2/uf2.h"
-
-#include "pstorage_platform.h"
-#include "nrf_mbr.h"
-#include "pstorage.h"
 #include "nrfx_nvmc.h"
 #include "nrfx_spi.h"
 
