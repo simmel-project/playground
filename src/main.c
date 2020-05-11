@@ -88,7 +88,7 @@ int main(void) {
 
   spi_deinit();
 
-  const uint32_t sample_rate = 16000;
+  const uint32_t sample_rate = 62500;
   memset(record_buffer_f, 0, sizeof(record_buffer_f));
   memset(record_buffer_i, 0, sizeof(record_buffer_i));
   record_to_buffer(&i2s_config, sample_rate, 'f', record_buffer_f,

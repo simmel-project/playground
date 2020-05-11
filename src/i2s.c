@@ -95,21 +95,25 @@ uint32_t choose_i2s_clocking(uint32_t sample_rate) {
 #endif
     }
   }
-  NRF_I2S->CONFIG.RATIO = best.RATIO;
-  NRF_I2S->CONFIG.MCKFREQ = best.MCKFREQ;
+  NRF_I2S->CONFIG.RATIO = I2S_CONFIG_RATIO_RATIO_64X;
+  NRF_I2S->CONFIG.MCKFREQ = I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV8;
   return best.sample_rate;
 }
 
 static void construct(const struct i2s_pin_config *cfg) {
-  NRF_I2S->PSEL.SCK = cfg->bit_clock_pin_number;
+  NRF_I2S->PSEL.MCK = cfg->bit_clock_pin_number;
   NRF_I2S->PSEL.LRCK = cfg->word_select_pin_number;
   NRF_I2S->PSEL.SDOUT = cfg->data_pin_number;
+  NRF_I2S->PSEL.SCK = (0+11);
 
   NRF_I2S->CONFIG.MODE = I2S_CONFIG_MODE_MODE_Master;
-  NRF_I2S->CONFIG.RXEN = I2S_CONFIG_RXEN_RXEN_Disabled;
-  NRF_I2S->CONFIG.TXEN = I2S_CONFIG_TXEN_TXEN_Enabled;
+  NRF_I2S->CONFIG.RXEN = I2S_CONFIG_RXEN_RXEN_Enabled;
+  NRF_I2S->CONFIG.TXEN = I2S_CONFIG_TXEN_TXEN_Disabled;
   NRF_I2S->CONFIG.MCKEN = I2S_CONFIG_MCKEN_MCKEN_Enabled;
   NRF_I2S->CONFIG.SWIDTH = I2S_CONFIG_SWIDTH_SWIDTH_16Bit;
+  NRF_I2S->CONFIG.RATIO = I2S_CONFIG_RATIO_RATIO_64X;
+  NRF_I2S->CONFIG.MCKFREQ = I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV8;
+  NRF_I2S->CONFIG.CHANNELS = I2S_CONFIG_CHANNELS_CHANNELS_Left;
 
   NRF_I2S->CONFIG.ALIGN = I2S_CONFIG_ALIGN_ALIGN_Left;
   NRF_I2S->CONFIG.FORMAT = I2S_CONFIG_FORMAT_FORMAT_I2S;
@@ -123,19 +127,15 @@ int record_to_buffer(const struct i2s_pin_config *cfg, uint32_t recording_rate,
   int32_t *buffer_i32 = (int32_t *)buffer;
 
   construct(cfg);
+  
   uint32_t stack_buffer[REC_BUFFER_LEN];
   uint32_t *sb_lo = stack_buffer;
   uint32_t *sb_hi = &stack_buffer[REC_BUFFER_LEN / 2];
   uint32_t sb_idx = 0;
 
-  NRF_I2S->CONFIG.SWIDTH = I2S_CONFIG_SWIDTH_SWIDTH_24Bit;
-  NRF_I2S->CONFIG.CHANNELS = I2S_CONFIG_CHANNELS_CHANNELS_Left;
   NRF_I2S->PSEL.SDOUT = 0xFFFFFFFF;
   NRF_I2S->PSEL.SDIN = cfg->data_pin_number;
-  choose_i2s_clocking(recording_rate);
-
-  NRF_I2S->CONFIG.RXEN = I2S_CONFIG_RXEN_RXEN_Enabled;
-  NRF_I2S->CONFIG.TXEN = I2S_CONFIG_TXEN_TXEN_Disabled;
+  //  choose_i2s_clocking(recording_rate);
 
   NRF_I2S->RXD.PTR = (uintptr_t)stack_buffer;
   NRF_I2S->TXD.PTR = 0xFFFFFFFF;
