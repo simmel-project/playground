@@ -54,7 +54,7 @@
 
 __attribute__((used)) uint8_t id[3];
 __attribute__((used)) float record_buffer_f[4096];
-__attribute__((used)) int32_t record_buffer_i[4096];
+__attribute__((used)) int16_t record_buffer_i[8192];
 
 static const struct i2s_pin_config i2s_config = {
     .data_pin_number = (32 + 9),
