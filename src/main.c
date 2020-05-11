@@ -66,6 +66,16 @@ void spi_init(void) {
   NRF_SPI1->PSELMISO = 32+SPI_MISO;
 }
 
+void spi_deinit(void) {
+  NRF_SPI1->ENABLE = 0;
+
+  // unsigned int i;
+  // for (i = 0; i < 32; i++) {
+  //   NRF_P0->PIN_CNF[i] |= 0x80000000;
+  //   NRF_P1->PIN_CNF[i] |= 0x80000000;
+  // }
+}
+
 void spi_select(void) {
   NRF_P1->OUTCLR = (1 << SPI_CSn);
 }
@@ -97,6 +107,7 @@ int main(void)
   NRF_CLOCK->TASKS_LFCLKSTOP = 1UL;
   NRF_CLOCK->LFCLKSRC = CLOCK_LFCLKSRC_SRC_Xtal;
   NRF_CLOCK->TASKS_LFCLKSTART = 1UL;
+  NRF_CLOCK->TASKS_HFCLKSTOP = 1UL;
 
   spi_init();
 
@@ -113,6 +124,9 @@ int main(void)
   spi_xfer(0xb9);
   spi_deselect();
 
+  spi_deinit();
+
+  // NRF_POWER->SYSTEMOFF = 1;
   while (1) {
     asm("wfi");
   }
