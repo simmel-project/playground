@@ -88,12 +88,11 @@ int main(void) {
 
   spi_deinit();
 
-  const uint32_t sample_rate = 62500;
   memset(record_buffer_f, 0, sizeof(record_buffer_f));
   memset(record_buffer_i, 0, sizeof(record_buffer_i));
-  record_to_buffer(&i2s_config, sample_rate, 'f', record_buffer_f,
+  record_to_buffer(&i2s_config, 'f', record_buffer_f,
                    sizeof(record_buffer_f) / sizeof(*record_buffer_f));
-  record_to_buffer(&i2s_config, sample_rate, 'i', record_buffer_i,
+  record_to_buffer(&i2s_config, 'i', record_buffer_i,
                    sizeof(record_buffer_i) / sizeof(*record_buffer_i));
   while (1) {
     asm("bkpt");

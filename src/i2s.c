@@ -59,47 +59,6 @@ struct mclk_info mclks[] = {
     {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV125, 125},
 };
 
-static void calculate_ratio_info(uint32_t target_sample_rate,
-                                 struct frequency_info *info, int ratio_index,
-                                 int mclk_index) {
-  info->RATIO = ratios[ratio_index].RATIO;
-  info->MCKFREQ = mclks[mclk_index].MCKFREQ;
-  info->sample_rate =
-      32000000 / ratios[ratio_index].divisor / mclks[mclk_index].divisor;
-  info->abserr =
-      fabsf(1.0f * target_sample_rate - info->sample_rate) / target_sample_rate;
-}
-
-uint32_t choose_i2s_clocking(uint32_t sample_rate) {
-  struct frequency_info best = {0, 0, 0, 1.0};
-  for (size_t ri = 0; ri < sizeof(ratios) / sizeof(ratios[0]); ri++) {
-    if (NRF_I2S->CONFIG.SWIDTH == I2S_CONFIG_SWIDTH_SWIDTH_16Bit &&
-        !ratios[ri].can_16bit) {
-      continue;
-    }
-    if (NRF_I2S->CONFIG.SWIDTH == I2S_CONFIG_SWIDTH_SWIDTH_24Bit &&
-        !ratios[ri].can_24bit) {
-      continue;
-    }
-
-    for (size_t mi = 0; mi < sizeof(mclks) / sizeof(mclks[0]); mi++) {
-      struct frequency_info info = {0, 0, 1.0, 0};
-      calculate_ratio_info(sample_rate, &info, ri, mi);
-      if (info.abserr < best.abserr) {
-        best = info;
-      }
-#ifdef DEBUG_CLOCKING
-      mp_printf(&mp_plat_print, "RATIO=%3d MCKFREQ=%08x rate=%d abserr=%.4f\n",
-                info.RATIO, info.MCKFREQ, info.sample_rate,
-                (double)info.abserr);
-#endif
-    }
-  }
-  NRF_I2S->CONFIG.RATIO = I2S_CONFIG_RATIO_RATIO_64X;
-  NRF_I2S->CONFIG.MCKFREQ = I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV8;
-  return best.sample_rate;
-}
-
 static void construct(const struct i2s_pin_config *cfg) {
   NRF_I2S->PSEL.MCK = cfg->bit_clock_pin_number;
   NRF_I2S->PSEL.LRCK = cfg->word_select_pin_number;
@@ -120,7 +79,7 @@ static void construct(const struct i2s_pin_config *cfg) {
 }
 
 #define REC_BUFFER_LEN 16
-int record_to_buffer(const struct i2s_pin_config *cfg, uint32_t recording_rate,
+int record_to_buffer(const struct i2s_pin_config *cfg,
                      uint8_t buf_typecode, void *buffer, size_t length) {
   float *buffer_f = (float *)buffer;
   uint32_t *buffer_u32 = (uint32_t *)buffer;
@@ -135,7 +94,6 @@ int record_to_buffer(const struct i2s_pin_config *cfg, uint32_t recording_rate,
 
   NRF_I2S->PSEL.SDOUT = 0xFFFFFFFF;
   NRF_I2S->PSEL.SDIN = cfg->data_pin_number;
-  //  choose_i2s_clocking(recording_rate);
 
   NRF_I2S->RXD.PTR = (uintptr_t)stack_buffer;
   NRF_I2S->TXD.PTR = 0xFFFFFFFF;
