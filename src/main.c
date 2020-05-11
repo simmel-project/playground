@@ -33,14 +33,14 @@
  * -# Activate Image, boot application.
  *
  */
-#include <stdint.h>
 #include <stdbool.h>
-#include <string.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <string.h>
 
-#include "nrfx_config.h"
-#include "nrfx.h"
 #include "nrf_clock.h"
+#include "nrfx.h"
+#include "nrfx_config.h"
 #include "nrfx_power.h"
 #include "nrfx_pwm.h"
 
@@ -49,58 +49,20 @@
 #include "nrfx_nvmc.h"
 #include "nrfx_spi.h"
 
-#define SPI_MOSI 9
-#define SPI_MISO (4) // P1
-#define SPI_SCK 10
-#define SPI_CSn (6) // P1
-void spi_init(void) {
-  NRF_P1->OUTSET = (1 << SPI_CSn);
-  NRF_P1->DIRSET = (1 << SPI_CSn);
-
-  NRF_P0->DIRSET = (1 << SPI_SCK) | (1 << SPI_MOSI);
-  NRF_P1->DIRCLR = (1 << SPI_MISO);
-
-  NRF_SPI1->ENABLE = 1UL;
-  NRF_SPI1->PSELSCK = SPI_SCK;
-  NRF_SPI1->PSELMOSI = SPI_MOSI;
-  NRF_SPI1->PSELMISO = 32+SPI_MISO;
-}
-
-void spi_deinit(void) {
-  NRF_SPI1->ENABLE = 0;
-
-  // unsigned int i;
-  // for (i = 0; i < 32; i++) {
-  //   NRF_P0->PIN_CNF[i] |= 0x80000000;
-  //   NRF_P1->PIN_CNF[i] |= 0x80000000;
-  // }
-}
-
-void spi_select(void) {
-  NRF_P1->OUTCLR = (1 << SPI_CSn);
-}
-
-uint8_t spi_xfer(uint8_t data) {
-  NRF_SPI1->TXD = data;
-  while (NRF_SPI1->EVENTS_READY == 0)
-    ;
-  NRF_SPI1->EVENTS_READY = 0;
-  return NRF_SPI1->RXD;
-}
-
-void spi_deselect(void) {
-  NRF_P1->OUTSET = (1 << SPI_CSn);
-}
+#include "i2s.h"
+#include "spi.h"
 
 __attribute__((used)) uint8_t id[3];
+__attribute__((used)) float record_buffer_f[4096];
+__attribute__((used)) int32_t record_buffer_i[4096];
 
-int main(void)
-{
-  // board_init();
+static const struct i2s_pin_config i2s_config = {
+    .data_pin_number = (32 + 9),
+    .bit_clock_pin_number = (0 + 12),
+    .word_select_pin_number = (0 + 8),
+};
 
-  // // Reset Board
-  // board_teardown();
-
+int main(void) {
   NRF_POWER->DCDCEN = 1UL;
 
   // Switch to the lfclk
@@ -126,9 +88,15 @@ int main(void)
 
   spi_deinit();
 
-  // NRF_POWER->SYSTEMOFF = 1;
+  const uint32_t sample_rate = 16000;
+  memset(record_buffer_f, 0, sizeof(record_buffer_f));
+  memset(record_buffer_i, 0, sizeof(record_buffer_i));
+  record_to_buffer(&i2s_config, sample_rate, 'f', record_buffer_f,
+                   sizeof(record_buffer_f) / sizeof(*record_buffer_f));
+  record_to_buffer(&i2s_config, sample_rate, 'i', record_buffer_i,
+                   sizeof(record_buffer_i) / sizeof(*record_buffer_i));
   while (1) {
-    asm("wfi");
+    asm("bkpt");
   }
   NVIC_SystemReset();
 }

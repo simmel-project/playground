@@ -159,7 +159,7 @@ INC_PATHS = $(addprefix -I,$(IPATH))
 ifeq ($(DEBUG), 1)
 	CFLAGS += -Og -ggdb3
 else
-	CFLAGS += -Os -ggdb3
+	CFLAGS += -Og -ggdb3
 endif
 
 #flags common to all targets
