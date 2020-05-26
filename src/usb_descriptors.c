@@ -76,8 +76,6 @@ enum
 {
   ITF_NUM_CDC1 = 0,
   ITF_NUM_CDC_DATA1,
-  ITF_NUM_CDC2,
-  ITF_NUM_CDC_DATA2,
   ITF_NUM_TOTAL
 };
 
@@ -98,9 +96,6 @@ uint8_t const desc_configuration[] =
 
   // 1st CDC: Interface number, string index, EP notification address and size, EP data address (out, in) and size.
   TUD_CDC_DESCRIPTOR(ITF_NUM_CDC1, 4, 0x81, 8, EPNUM_CDC, 0x80 | EPNUM_CDC, 64),
-
-  // 2nd CDC: Interface number, string index, EP notification address and size, EP data address (out, in) and size.
-  TUD_CDC_DESCRIPTOR(ITF_NUM_CDC2, 4, 0x83, 8, EPNUM_CDC + 2, 0x80 | (EPNUM_CDC + 2), 64),
 };
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR
