@@ -10,55 +10,6 @@
 
 #include "i2s.h"
 
-struct {
-  int16_t l, r;
-} static_sample16 = {0x8000, 0x8000};
-struct {
-  uint8_t l1, r1, l2, r2;
-} static_sample8 = {0x80, 0x80, 0x80, 0x80};
-
-struct frequency_info {
-  uint32_t RATIO;
-  uint32_t MCKFREQ;
-  int sample_rate;
-  float abserr;
-};
-struct ratio_info {
-  uint32_t RATIO;
-  int16_t divisor;
-  bool can_16bit;
-  bool can_24bit;
-};
-struct ratio_info ratios[] = {
-    {I2S_CONFIG_RATIO_RATIO_32X, 32, true, true},
-    {I2S_CONFIG_RATIO_RATIO_48X, 48, false, false},
-    {I2S_CONFIG_RATIO_RATIO_64X, 64, true, true},
-    {I2S_CONFIG_RATIO_RATIO_96X, 96, true, false},
-    {I2S_CONFIG_RATIO_RATIO_128X, 128, true, true},
-    {I2S_CONFIG_RATIO_RATIO_192X, 192, true, true},
-    {I2S_CONFIG_RATIO_RATIO_256X, 256, true, true},
-    {I2S_CONFIG_RATIO_RATIO_384X, 384, true, true},
-    {I2S_CONFIG_RATIO_RATIO_512X, 512, true, true},
-};
-
-struct mclk_info {
-  uint32_t MCKFREQ;
-  int divisor;
-};
-struct mclk_info mclks[] = {
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV8, 8},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV10, 10},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV11, 11},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV15, 15},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV16, 16},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV21, 21},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV23, 23},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV31, 31},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV42, 42},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV63, 63},
-    {I2S_CONFIG_MCKFREQ_MCKFREQ_32MDIV125, 125},
-};
-
 static void construct(const struct i2s_pin_config *cfg) {
   NRF_I2S->PSEL.MCK = cfg->bit_clock_pin_number;
   NRF_I2S->PSEL.LRCK = cfg->word_select_pin_number;
