@@ -10,11 +10,16 @@
 
 #include "i2s.h"
 
-static void construct(const struct i2s_pin_config *cfg) {
+static volatile uintptr_t buffers[2];
+static volatile size_t buffer_size;
+static volatile uint8_t buffer_num;
+
+void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     NRF_I2S->PSEL.MCK = cfg->bit_clock_pin_number;
     NRF_I2S->PSEL.LRCK = cfg->word_select_pin_number;
-    NRF_I2S->PSEL.SDOUT = cfg->data_pin_number;
-    NRF_I2S->PSEL.SCK = (0 + 11);
+    NRF_I2S->PSEL.SCK = (0 + 11); // Assign an unused pin
+    NRF_I2S->PSEL.SDOUT = 0xFFFFFFFF;
+    NRF_I2S->PSEL.SDIN = cfg->data_pin_number;
 
     NRF_I2S->CONFIG.MODE = I2S_CONFIG_MODE_MODE_Master;
     NRF_I2S->CONFIG.RXEN = I2S_CONFIG_RXEN_RXEN_Enabled;
@@ -27,29 +32,24 @@ static void construct(const struct i2s_pin_config *cfg) {
 
     NRF_I2S->CONFIG.ALIGN = I2S_CONFIG_ALIGN_ALIGN_Left;
     NRF_I2S->CONFIG.FORMAT = I2S_CONFIG_FORMAT_FORMAT_I2S;
+
+    buffers[0] = (uintptr_t)buffer;
+    buffers[1] = ((uintptr_t)buffer) + len / 2;
+    buffer_size = len / 2;
+    buffer_num = 0;
 }
 
-#define REC_BUFFER_LEN 16
-int record_to_buffer(const struct i2s_pin_config *cfg, uint8_t buf_typecode,
-                     void *buffer, size_t length) {
-    float *buffer_f = (float *)buffer;
-    uint32_t *buffer_u32 = (uint32_t *)buffer;
-    int32_t *buffer_s32 = (int32_t *)buffer;
-    uint16_t *buffer_u16 = (uint16_t *)buffer;
-    int16_t *buffer_s16 = (int16_t *)buffer;
+void nus_start(void) {
 
-    construct(cfg);
-
-    uint32_t stack_buffer[REC_BUFFER_LEN];
-    uint16_t *sb_lo = (uint16_t *)stack_buffer;
-    uint16_t *sb_hi = (uint16_t *)&stack_buffer[REC_BUFFER_LEN / 2];
-    uint16_t sb_idx = 0;
-
-    NRF_I2S->PSEL.SDOUT = 0xFFFFFFFF;
-    NRF_I2S->PSEL.SDIN = cfg->data_pin_number;
-
-    NRF_I2S->RXD.PTR = (uintptr_t)stack_buffer;
+    // Load buffer number 0 into the pointer.
+    buffer_num = 0;
+    NRF_I2S->RXD.PTR = buffers[buffer_num];
     NRF_I2S->TXD.PTR = 0xFFFFFFFF;
+    NRF_I2S->RXTXD.MAXCNT = buffer_size;
+
+    NVIC_SetPriority(I2S_IRQn, 2);
+    NVIC_EnableIRQ(I2S_IRQn);
+
     // Turn on the interrupt to the NVIC but not within the NVIC itself. This
     // will wake the CPU and keep it awake until it is serviced without
     // triggering an interrupt handler.
@@ -58,83 +58,54 @@ int record_to_buffer(const struct i2s_pin_config *cfg, uint8_t buf_typecode,
 
     NRF_I2S->TASKS_START = 1;
 
-    // The first event fires indicating the hardware accepted the buffer
-    // and that it's started writing to it.
-    // Wait for the hardware to read in the buffer
-    do {
-        uint32_t i;
-        uint32_t sample_size = length;
-        if (sample_size > REC_BUFFER_LEN) {
-            sample_size = REC_BUFFER_LEN;
-        }
-        NRF_I2S->RXTXD.MAXCNT = sample_size / 4;
+    return;
+}
 
-        while (!NRF_I2S->EVENTS_RXPTRUPD) {
-            //   asm("wfe");
-        }
-        NRF_I2S->EVENTS_RXPTRUPD = 0;
-        uint16_t *current_sb = sb_idx & 1 ? sb_hi : sb_lo;
-        NRF_I2S->RXD.PTR = (uintptr_t)(((++sb_idx) & 1) ? sb_hi : sb_lo);
-
-        switch (buf_typecode) {
-        case 'f':
-            for (i = 0; i < sample_size; i++) {
-                *buffer_f++ = current_sb[i];
-            }
-            break;
-        case 'I':
-        case 'L':
-            for (i = 0; i < sample_size; i++) {
-                *buffer_u32++ = current_sb[i] + 32768;
-            }
-            break;
-        case 'H':
-            for (i = 0; i < sample_size; i++) {
-                *buffer_u16++ = current_sb[i] + 32768;
-            }
-            break;
-        case 'h':
-            for (i = 0; i < sample_size; i++) {
-                *buffer_s16++ = current_sb[i];
-            }
-            break;
-        case 'i':
-        case 'l':
-            for (i = 0; i < sample_size; i++) {
-                *buffer_s32++ = current_sb[i];
-            }
-            break;
-        default:
-            asm("bkpt");
-        }
-
-        length -= sample_size;
-    } while (length != 0);
-    //   NRF_I2S->RXTXD.MAXCNT = 0;
-
-    // The second event fires indicating the buffer has filled
-    // and that the I2S core has latched a second buffer.
-    // Note that there is a race condition here, because the
-    // I2S engine will begin writing over the buffer a second time.
-    // Audio data is slow enough that this shouldn't matter, but there
-    // is a potential for the first few samples to get overwritten
-    // if the VM Hook Loop is very slow.
-    while (!NRF_I2S->EVENTS_RXPTRUPD) {
-        // asm("wfe");
-    }
-
+void nus_stop(void) {
     // Stop the task as soon as possible to prevent it from overwriting the
     // buffer.
+    NVIC_DisableIRQ(I2S_IRQn);
     NRF_I2S->TASKS_STOP = 1;
     NRF_I2S->CONFIG.RXEN = I2S_CONFIG_RXEN_RXEN_Disabled;
     NRF_I2S->EVENTS_RXPTRUPD = 0;
     NRF_I2S->RXTXD.MAXCNT = 0;
 
     NRF_I2S->CONFIG.TXEN = I2S_CONFIG_TXEN_TXEN_Enabled;
-    NRF_I2S->PSEL.SDIN = 0xFFFFFFFF;
-    NRF_I2S->PSEL.SDOUT = cfg->data_pin_number;
 
     NRF_I2S->INTENCLR = I2S_INTENSET_RXPTRUPD_Msk;
     NRF_I2S->ENABLE = I2S_ENABLE_ENABLE_Disabled;
-    return length;
+}
+
+//--------------------------------------------------------------------+
+// I2S has just picked up a buffer, so the previous buffer is ready.
+//--------------------------------------------------------------------+
+void I2S_IRQHandler(void) {
+    // If the RX pointer was just updated, swap to the other buffer.
+    if (NRF_I2S->EVENTS_RXPTRUPD) {
+        extern volatile uint32_t i2s_irqs;
+        extern volatile int16_t *i2s_buffer;
+        extern volatile bool i2s_ready;
+
+        // If the buffer number was 0, load buffer number 1, and
+        // indicate that buffer 1 is now ready. Conversely, if the
+        // buffer number was 1, load buffer 0 and indicate buffer 0
+        // is ready.
+        //
+        // This is somewhat counterintuitive, because we're indicating
+        // the buffer that was just loaded is ready. However, this is
+        // because the interrupt fires before the frame starts transmitting.
+        // That is, the first time this ISR runs, `buffer_num` is 0, indicating
+        // the hardware just loaded buffer 0 into the register, meaning it will
+        // start overwriting buffer 0 immediately.
+        //
+        // In this case, we must load buffer 1 into the register. Additionally,
+        // since buffer 0 is getting written by the hardware, we must indicate
+        // that buffer 1 is ready.
+        NRF_I2S->RXD.PTR = buffers[++buffer_num & 2];
+        NRF_I2S->EVENTS_RXPTRUPD = 0;
+
+        i2s_irqs++;
+        i2s_buffer = (int16_t *)buffers[buffer_num & 2];
+        i2s_ready = true;
+    }
 }

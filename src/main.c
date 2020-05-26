@@ -49,16 +49,25 @@
 #include "nrfx_nvmc.h"
 #include "nrfx_spi.h"
 
+#include "afsk.h"
 #include "i2s.h"
 #include "spi.h"
 #include "usb.h"
 
 #include "printf.h"
 
+static const struct demod_config nus_cfg = {
+    .sample_rate = 62500,
+    .f_lo = 15000,
+    .f_hi = 17000,
+    .filter_width = 8,
+    .baud_rate = 5001,
+};
+
 #define BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS 0x0007E000
 // This must match the value in `nrf52833_s140_v7.ld`
 #define BOOTLOADER_REGION_START                                                \
-    0x00076000 /**< This field should correspond to start address of the       \
+    0x00070000 /**< This field should correspond to start address of the       \
                   bootloader, found in UICR.RESERVED, 0x10001014, register.    \
                   This value is used for sanity check, so the bootloader will  \
                   fail immediately if this value differs from runtime value.   \
@@ -90,9 +99,7 @@ volatile uint32_t m_uicr_bootloader_start_address __attribute__((
                                 bootloader is flashed into the chip. */
 
 __attribute__((used)) uint8_t id[3];
-__attribute__((used)) float record_buffer_f[4096];
-__attribute__((used)) int16_t record_buffer_i16[8192];
-__attribute__((used)) int32_t record_buffer_i32[8192];
+__attribute__((used, aligned(4))) int8_t record_buffer[2048];
 
 static const struct i2s_pin_config i2s_config = {
     .data_pin_number = (32 + 9),
@@ -100,9 +107,21 @@ static const struct i2s_pin_config i2s_config = {
     .word_select_pin_number = (0 + 8),
 };
 
+volatile uint32_t i2s_irqs;
+volatile int16_t *i2s_buffer = NULL;
+volatile bool i2s_ready = false;
+
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
     cdc_task();
+
+    if (i2s_ready) {
+        i2s_ready = false;
+        afsk_run((int16_t *)i2s_buffer, 512);
+        if (i2s_ready) {
+            printf("I2S UNDERRUN!!!");
+        }
+    }
 }
 
 int main(void) {
@@ -118,6 +137,7 @@ int main(void) {
 
     usb_init();
     tusb_init();
+    afsk_init(&nus_cfg);
 
     while (!tud_cdc_n_connected(0)) {
         background_tasks();
@@ -146,21 +166,22 @@ int main(void) {
 
     spi_deinit();
 
-    printf("@SPI ID: %02x %02x %02x\n", id[0], id[1], id[2]);
+    printf("SPI ID: %02x %02x %02x\n", id[0], id[1], id[2]);
 
-    memset(record_buffer_f, 0, sizeof(record_buffer_f));
-    memset(record_buffer_i16, 0, sizeof(record_buffer_i16));
-    memset(record_buffer_i32, 0, sizeof(record_buffer_i32));
-    record_to_buffer(&i2s_config, 'f', record_buffer_f,
-                     sizeof(record_buffer_f) / sizeof(*record_buffer_f));
-    record_to_buffer(&i2s_config, 'h', record_buffer_i16,
-                     sizeof(record_buffer_i16) / sizeof(*record_buffer_i16));
-    record_to_buffer(&i2s_config, 'i', record_buffer_i32,
-                     sizeof(record_buffer_i32) / sizeof(*record_buffer_i32));
+    nus_init(&i2s_config, record_buffer,
+             sizeof(record_buffer) / sizeof(*record_buffer));
+    nus_start();
 
-
+    uint32_t usb_irqs = 0;
+    uint32_t last_i2s_irqs = i2s_irqs;
     while (1) {
         background_tasks();
+        usb_irqs++;
+        if (i2s_irqs != last_i2s_irqs) {
+            // printf("I2S IRQ count: %d  USB IRQ count: %d\n", i2s_irqs, usb_irqs);
+            last_i2s_irqs = i2s_irqs;
+            usb_irqs = 0;
+        }
     }
 
     NVIC_SystemReset();

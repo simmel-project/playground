@@ -67,6 +67,7 @@ OUT_FILE = nus-test
 
 # all files in src
 C_SRC += $(wildcard src/*.c)
+C_SRC += $(wildcard src/afsk/*.c)
 
 # all sources files in specific board
 C_SRC += $(wildcard src/boards/$(BOARD)/*.c)
@@ -100,7 +101,7 @@ IPATH += src
 IPATH += src/boards/$(BOARD)
 
 IPATH += src/cmsis/include
-IPATH += src/usb
+IPATH += src/afsk
 IPATH += src/boards
 IPATH += $(TUSB_PATH)
 
