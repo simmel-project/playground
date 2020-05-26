@@ -162,7 +162,6 @@ CFLAGS += \
 	-Werror \
 	-Wfatal-errors \
 	-Werror-implicit-function-declaration \
-	-Wfloat-equal \
 	-Wundef \
 	-Wshadow \
 	-Wwrite-strings \
@@ -182,13 +181,10 @@ CFLAGS += -D__HEAP_SIZE=0
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DCONFIG_NFCT_PINS_AS_GPIOS
 # CFLAGS += -DSOFTDEVICE_PRESENT
-CFLAGS += -DDFU_APP_DATA_RESERVED=7*4096
 
 CFLAGS += -DUF2_VERSION='"$(GIT_VERSION) $(GIT_SUBMODULE_VERSIONS) $(SD_NAME) $(SD_VERSION)"'
-CFLAGS += -DBLEDIS_FW_VERSION='"$(GIT_VERSION) $(SD_NAME) $(SD_VERSION)"'
 
 _VER = $(subst ., ,$(word 1, $(subst -, ,$(GIT_VERSION))))
-CFLAGS += -DMK_BOOTLOADER_VERSION='($(word 1,$(_VER)) << 16) + ($(word 2,$(_VER)) << 8) + $(word 3,$(_VER))'
 
 #------------------------------------------------------------------------------
 # Linker Flags
@@ -256,15 +252,6 @@ check_defined = \
 __check_defined = \
     $(if $(value $1),, \
     $(error Undefined make flag: $1$(if $2, ($2))))
-
-# Flash the compiled
-flash: $(BUILD)/$(OUT_FILE)-nosd.hex
-	@echo Flashing: $<
-	$(NRFJPROG) --program $< --sectoranduicrerase -f nrf52 --reset
-
-sd:
-	@echo Flashing: $(SD_HEX)
-	$(NRFJPROG) --program $(SD_HEX) -f nrf52 --chiperase  --reset
 
 gdb: $(BUILD)/$(OUT_FILE)-nosd.elf
 	$(GDB_BMP) $<

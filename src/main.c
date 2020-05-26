@@ -51,15 +51,43 @@
 
 #include "i2s.h"
 #include "spi.h"
+#include "usb.h"
 
-#include "tusb.h"
+#include "printf.h"
 
-static void cdc_task(void);
+#define BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS 0x0007E000
+// This must match the value in `nrf52833_s140_v7.ld`
+#define BOOTLOADER_REGION_START                                                \
+    0x00076000 /**< This field should correspond to start address of the       \
+                  bootloader, found in UICR.RESERVED, 0x10001014, register.    \
+                  This value is used for sanity check, so the bootloader will  \
+                  fail immediately if this value differs from runtime value.   \
+                  The value is used to determine max application size for      \
+                  updating. */
+#define CODE_PAGE_SIZE                                                         \
+    0x1000 /**< Size of a flash codepage. Used for size of the reserved flash  \
+              space in the bootloader region. Will be runtime checked against  \
+              NRF_UICR->CODEPAGESIZE to ensure the region is correct. */
+uint8_t m_mbr_params_page[CODE_PAGE_SIZE] __attribute__((section(
+    ".mbrParamsPage"))); /**< This variable reserves a codepage for mbr
+                            parameters, to ensure the compiler doesn't locate
+                            any code or variables at his location. */
+volatile uint32_t m_uicr_mbr_params_page_address
+    __attribute__((section(".uicrMbrParamsPageAddress"))) =
+        BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS;
 
-// tinyusb function that handles power event (detected, ready, removed)
-// We must call it within SD's SOC event handler, or set it as power event
-// handler if SD is not enabled.
-void tusb_hal_nrf_power_event(uint32_t event);
+uint8_t m_boot_settings[CODE_PAGE_SIZE] __attribute__((
+    section(".bootloaderSettings"))); /**< This variable reserves a codepage for
+                                         bootloader specific settings, to ensure
+                                         the compiler doesn't locate any code or
+                                         variables at his location. */
+volatile uint32_t m_uicr_bootloader_start_address __attribute__((
+    section(".uicrBootStartAddress"))) =
+    BOOTLOADER_REGION_START; /**< This variable ensures that the linker script
+                                will write the bootloader start address to the
+                                UICR register. This value will be written in the
+                                HEX file and thus written to UICR when the
+                                bootloader is flashed into the chip. */
 
 __attribute__((used)) uint8_t id[3];
 __attribute__((used)) float record_buffer_f[4096];
@@ -72,35 +100,14 @@ static const struct i2s_pin_config i2s_config = {
     .word_select_pin_number = (0 + 8),
 };
 
-static void usb_init(void) {
-    // Priorities 0, 1, 4 (nRF52) are reserved for SoftDevice
-    // 2 is highest for application
-    NVIC_SetPriority(USBD_IRQn, 2);
-
-    // USB power may already be ready at this time -> no event generated
-    // We need to invoke the handler based on the status initially
-    uint32_t usb_reg;
-
-    // Power module init
-    const nrfx_power_config_t pwr_cfg = {0};
-    nrfx_power_init(&pwr_cfg);
-
-    // Register tusb function as USB power handler
-    const nrfx_power_usbevt_config_t config = {
-        .handler = (nrfx_power_usb_event_handler_t)tusb_hal_nrf_power_event};
-    nrfx_power_usbevt_init(&config);
-
-    nrfx_power_usbevt_enable();
-
-    usb_reg = NRF_POWER->USBREGSTATUS;
-
-    if (usb_reg & POWER_USBREGSTATUS_VBUSDETECT_Msk)
-        tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_DETECTED);
-    if (usb_reg & POWER_USBREGSTATUS_OUTPUTRDY_Msk)
-        tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_READY);
+static void background_tasks(void) {
+    tud_task(); // tinyusb device task
+    cdc_task();
 }
 
 int main(void) {
+    int i;
+
     NRF_POWER->DCDCEN = 1UL;
 
     // Switch to the lfclk
@@ -108,6 +115,19 @@ int main(void) {
     NRF_CLOCK->LFCLKSRC = CLOCK_LFCLKSRC_SRC_Xtal;
     NRF_CLOCK->TASKS_LFCLKSTART = 1UL;
     NRF_CLOCK->TASKS_HFCLKSTOP = 1UL;
+
+    usb_init();
+    tusb_init();
+
+    while (!tud_cdc_n_connected(0)) {
+        background_tasks();
+    }
+
+    // USB CDC is always unreliable during first connection. Use this cheesy
+    // delay to work around that problem.
+    for (i = 0; i < 16384; i++) {
+        background_tasks();
+    }
 
     spi_init();
 
@@ -126,6 +146,8 @@ int main(void) {
 
     spi_deinit();
 
+    printf("@SPI ID: %02x %02x %02x\n", id[0], id[1], id[2]);
+
     memset(record_buffer_f, 0, sizeof(record_buffer_f));
     memset(record_buffer_i16, 0, sizeof(record_buffer_i16));
     memset(record_buffer_i32, 0, sizeof(record_buffer_i32));
@@ -136,63 +158,20 @@ int main(void) {
     record_to_buffer(&i2s_config, 'i', record_buffer_i32,
                      sizeof(record_buffer_i32) / sizeof(*record_buffer_i32));
 
-    usb_init();
-    tusb_init();
 
     while (1) {
-        tud_task(); // tinyusb device task
-        cdc_task();
+        background_tasks();
     }
 
     NVIC_SystemReset();
 }
 
-// echo to either Serial0 or Serial1
-// with Serial0 as all lower case, Serial1 as all upper case
-static void echo_serial_port(uint8_t itf, uint8_t buf[], uint32_t count) {
-    for (uint32_t i = 0; i < count; i++) {
-        if (itf == 0) {
-            // echo back 1st port as lower case
-            // if (isupper(buf[i])) buf[i] += 'a' - 'A';
-            buf[i] += 'a' - 'A';
-        } else {
-            // echo back additional ports as upper case
-            buf[i] -= 'a' - 'A';
-            // if (islower(buf[i])) buf[i] -= 'a' - 'A';
-        }
-
-        tud_cdc_n_write_char(itf, buf[i]);
-
-        if (buf[i] == '\r') tud_cdc_n_write_char(itf, '\n');
+// printf glue
+void _putchar(char character) {
+    if (character == '\n') {
+        tud_cdc_n_write_char(0, '\r');
     }
-    tud_cdc_n_write_flush(itf);
-}
-
-//--------------------------------------------------------------------+
-// USB CDC
-//--------------------------------------------------------------------+
-static void cdc_task(void) {
-    uint8_t itf;
-
-    for (itf = 0; itf < CFG_TUD_CDC; itf++) {
-        if (tud_cdc_n_connected(itf)) {
-            if (tud_cdc_n_available(itf)) {
-                uint8_t buf[64];
-
-                uint32_t count = tud_cdc_n_read(itf, buf, sizeof(buf));
-
-                // echo back to both serial ports
-                echo_serial_port(0, buf, count);
-                echo_serial_port(1, buf, count);
-            }
-        }
+    while (tud_cdc_n_write_char(0, character) < 1) {
+        background_tasks();
     }
-}
-
-//--------------------------------------------------------------------+
-// Forward USB interrupt events to TinyUSB IRQ Handler
-//--------------------------------------------------------------------+
-void USBD_IRQHandler(void)
-{
-  tud_int_handler(0);
 }
