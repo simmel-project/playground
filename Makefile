@@ -29,9 +29,6 @@ OBJCOPY = $(CROSS_COMPILE)objcopy
 SIZE    = $(CROSS_COMPILE)size
 GDB     = $(CROSS_COMPILE)gdb
 
-NRFUTIL = adafruit-nrfutil
-NRFJPROG = nrfjprog
-
 MK = mkdir -p
 RM = rm -rf
 
@@ -43,39 +40,17 @@ GDB_BMP = $(GDB) -ex 'target extended-remote $(BMP_PORT)' -ex 'monitor swdp_scan
 # Select the board to build
 #---------------------------------
 BOARD ?= simmel
-BOARD_LIST = $(sort $(subst src/boards/,,$(wildcard src/boards/*)))
-
-ifeq ($(filter $(BOARD),$(BOARD_LIST)),)
-  $(info You must provide a BOARD parameter with 'BOARD='. Supported boards are:)
-  $(foreach b,$(BOARD_LIST),$(info - $(b)))
-  $(error Invalid BOARD specified)
-endif
 
 # Build directory
-BUILD = _build/build-$(BOARD)
+BUILD = _build
 
 # Board specific
 -include src/boards/$(BOARD)/board.mk
 
-# MCU_SUB_VARIANT can be nrf52 (nrf52832), nrf52833, nrf52840
-ifeq ($(MCU_SUB_VARIANT),nrf52)
-  SD_NAME = s132
-  DFU_DEV_REV = 0xADAF
-  CFLAGS += -DNRF52 -DNRF52832_XXAA -DS132
-  SD_VERSION = 6.1.1
-else ifeq ($(MCU_SUB_VARIANT),nrf52833)
-  SD_NAME = s140
-  DFU_DEV_REV = 52840
-  CFLAGS += -DNRF52833_XXAA -DS140
-  SD_VERSION = 7.0.1
-else ifeq ($(MCU_SUB_VARIANT),nrf52840)
-  SD_NAME = s140
-  DFU_DEV_REV = 52840
-  CFLAGS += -DNRF52840_XXAA -DS140
-  SD_VERSION = 6.1.1
-else
-  $(error Sub Variant $(MCU_SUB_VARIANT) is unknown)
-endif
+SD_NAME = s140
+DFU_DEV_REV = 52840
+CFLAGS += -DNRF52833_XXAA -DS140 -DCFG_TUSB_MCU=OPT_MCU_NRF5X
+SD_VERSION = 7.0.1
 
 SD_FILENAME  = $(SD_NAME)_nrf52_$(SD_VERSION)
 SD_HEX       = $(SD_PATH)/$(SD_FILENAME)_softdevice.hex
@@ -84,10 +59,7 @@ SD_HEX       = $(SD_PATH)/$(SD_FILENAME)_softdevice.hex
 LD_FILE      = linker/$(MCU_SUB_VARIANT)_$(SD_NAME)_v$(word 1, $(subst ., ,$(SD_VERSION))).ld
 
 # compiled file name
-OUT_FILE = power-test
-
-# merged file = compiled + sd
-MERGED_FILE = $(OUT_FILE)_$(SD_NAME)_$(SD_VERSION)
+OUT_FILE = nus-test
 
 #------------------------------------------------------------------------------
 # SOURCE FILES
@@ -103,6 +75,16 @@ C_SRC += $(wildcard src/boards/$(BOARD)/*.c)
 C_SRC += $(NRFX_PATH)/drivers/src/nrfx_power.c
 C_SRC += $(NRFX_PATH)/drivers/src/nrfx_nvmc.c
 C_SRC += $(NRFX_PATH)/mdk/system_$(MCU_SUB_VARIANT).c
+
+# tinyusb
+C_SRC += $(TUSB_PATH)/tusb.c
+C_SRC += $(TUSB_PATH)/common/tusb_fifo.c
+C_SRC += $(TUSB_PATH)/device/usbd.c
+C_SRC += $(TUSB_PATH)/device/usbd_control.c
+C_SRC += $(TUSB_PATH)/portable/nordic/nrf5x/dcd_nrf5x.c
+C_SRC += $(TUSB_PATH)/class/cdc/cdc_device.c
+IPATH += lib/tinyusb/hw/mcu/nordic/nrf5x/s140_nrf52_6.1.1_API/include/nrf52
+IPATH += lib/tinyusb/hw/mcu/nordic/nrf5x/s140_nrf52_6.1.1_API/include
 
 #------------------------------------------------------------------------------
 # Assembly Files
@@ -257,7 +239,7 @@ $(info ASFLAGS $(ASFLAGS))
 $(info )
 endif
 
-.PHONY: all clean flash dfu-flash sd gdbflash gdb
+.PHONY: all clean flash sd gdb
 
 # default target to build
 all: $(BUILD)/$(OUT_FILE)-nosd.hex
@@ -281,17 +263,9 @@ flash: $(BUILD)/$(OUT_FILE)-nosd.hex
 	@echo Flashing: $<
 	$(NRFJPROG) --program $< --sectoranduicrerase -f nrf52 --reset
 
-dfu-flash: $(BUILD)/$(MERGED_FILE).zip
-	@:$(call check_defined, SERIAL, example: SERIAL=/dev/ttyACM0)
-	$(NRFUTIL) --verbose dfu serial --package $< -p $(SERIAL) -b 115200 --singlebank --touch 1200
-
 sd:
 	@echo Flashing: $(SD_HEX)
 	$(NRFJPROG) --program $(SD_HEX) -f nrf52 --chiperase  --reset
-
-gdbflash: $(BUILD)/$(MERGED_FILE).hex
-	@echo Flashing: $<
-	@$(GDB_BMP) -nx --batch -ex 'load $<' -ex 'compare-sections' -ex 'kill'
 
 gdb: $(BUILD)/$(OUT_FILE)-nosd.elf
 	$(GDB_BMP) $<
@@ -327,15 +301,3 @@ $(BUILD)/$(OUT_FILE)-nosd.elf: $(BUILD) $(OBJECTS)
 $(BUILD)/$(OUT_FILE)-nosd.hex: $(BUILD)/$(OUT_FILE)-nosd.elf
 	@echo CR $(OUT_FILE)-nosd.hex
 	@$(OBJCOPY) -O ihex $< $@
-
-# merge bootloader and sd hex together
-$(BUILD)/$(MERGED_FILE).hex: $(BUILD)/$(OUT_FILE)-nosd.hex
-	@echo CR $(MERGED_FILE).hex
-	@mergehex -q -m $< $(SD_HEX) -o $@
-
-## Create pkg zip file for bootloader+SD combo to use with DFU Serial
-.PHONY: genpkg
-genpkg: $(BUILD)/$(MERGED_FILE).zip
-
-$(BUILD)/$(MERGED_FILE).zip: $(BUILD)/$(OUT_FILE)-nosd.hex
-	@$(NRFUTIL) dfu genpkg --dev-type 0x0052 --dev-revision $(DFU_DEV_REV) --bootloader $< --softdevice $(SD_HEX) $@
