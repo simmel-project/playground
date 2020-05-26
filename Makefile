@@ -147,7 +147,6 @@ endif
 #flags common to all targets
 CFLAGS += \
 	-mthumb \
-	-flto \
 	-mabi=aapcs \
 	-mcpu=cortex-m4 \
 	-mfloat-abi=hard \
@@ -182,7 +181,7 @@ CFLAGS += -Wno-cast-function-type
 CFLAGS += -D__HEAP_SIZE=0
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DCONFIG_NFCT_PINS_AS_GPIOS
-CFLAGS += -DSOFTDEVICE_PRESENT
+# CFLAGS += -DSOFTDEVICE_PRESENT
 CFLAGS += -DDFU_APP_DATA_RESERVED=7*4096
 
 CFLAGS += -DUF2_VERSION='"$(GIT_VERSION) $(GIT_SUBMODULE_VERSIONS) $(SD_NAME) $(SD_VERSION)"'

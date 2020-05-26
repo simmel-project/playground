@@ -81,72 +81,84 @@ static void construct(const struct i2s_pin_config *cfg) {
 #define REC_BUFFER_LEN 16
 int record_to_buffer(const struct i2s_pin_config *cfg,
                      uint8_t buf_typecode, void *buffer, size_t length) {
-  float *buffer_f = (float *)buffer;
-  uint32_t *buffer_u32 = (uint32_t *)buffer;
-  int32_t *buffer_i32 = (int32_t *)buffer;
+    float *buffer_f = (float *)buffer;
+    uint32_t *buffer_u32 = (uint32_t *)buffer;
+    int32_t *buffer_s32 = (int32_t *)buffer;
+    uint16_t *buffer_u16 = (uint16_t *)buffer;
+    int16_t *buffer_s16 = (int16_t *)buffer;
 
-  construct(cfg);
-  
-  uint32_t stack_buffer[REC_BUFFER_LEN];
-  uint32_t *sb_lo = stack_buffer;
-  uint32_t *sb_hi = &stack_buffer[REC_BUFFER_LEN / 2];
-  uint32_t sb_idx = 0;
+    construct(cfg);
 
-  NRF_I2S->PSEL.SDOUT = 0xFFFFFFFF;
-  NRF_I2S->PSEL.SDIN = cfg->data_pin_number;
+    uint32_t stack_buffer[REC_BUFFER_LEN];
+    uint16_t *sb_lo = (uint16_t *)stack_buffer;
+    uint16_t *sb_hi = (uint16_t *)&stack_buffer[REC_BUFFER_LEN / 2];
+    uint16_t sb_idx = 0;
 
-  NRF_I2S->RXD.PTR = (uintptr_t)stack_buffer;
-  NRF_I2S->TXD.PTR = 0xFFFFFFFF;
-  // Turn on the interrupt to the NVIC but not within the NVIC itself. This
-  // will wake the CPU and keep it awake until it is serviced without
-  // triggering an interrupt handler.
-  NRF_I2S->INTENSET = I2S_INTENSET_RXPTRUPD_Msk;
-  NRF_I2S->ENABLE = I2S_ENABLE_ENABLE_Enabled;
+    NRF_I2S->PSEL.SDOUT = 0xFFFFFFFF;
+    NRF_I2S->PSEL.SDIN = cfg->data_pin_number;
 
-  NRF_I2S->TASKS_START = 1;
+    NRF_I2S->RXD.PTR = (uintptr_t)stack_buffer;
+    NRF_I2S->TXD.PTR = 0xFFFFFFFF;
+    // Turn on the interrupt to the NVIC but not within the NVIC itself. This
+    // will wake the CPU and keep it awake until it is serviced without
+    // triggering an interrupt handler.
+    NRF_I2S->INTENSET = I2S_INTENSET_RXPTRUPD_Msk;
+    NRF_I2S->ENABLE = I2S_ENABLE_ENABLE_Enabled;
 
-  // The first event fires indicating the hardware accepted the buffer
-  // and that it's started writing to it.
-  // Wait for the hardware to read in the buffer
-  do {
-    uint32_t i;
-    uint32_t sample_size = length;
-    if (sample_size > REC_BUFFER_LEN / 2) {
-      sample_size = REC_BUFFER_LEN / 2;
-    }
-    NRF_I2S->RXTXD.MAXCNT = sample_size;
+    NRF_I2S->TASKS_START = 1;
 
-    while (!NRF_I2S->EVENTS_RXPTRUPD) {
-    //   asm("wfe");
-    }
-    NRF_I2S->EVENTS_RXPTRUPD = 0;
-    uint32_t *current_sb = sb_idx & 1 ? sb_hi : sb_lo;
-    NRF_I2S->RXD.PTR = (uintptr_t) (((++sb_idx) & 1) ? sb_hi : sb_lo);
+    // The first event fires indicating the hardware accepted the buffer
+    // and that it's started writing to it.
+    // Wait for the hardware to read in the buffer
+    do {
+        uint32_t i;
+        uint32_t sample_size = length;
+        if (sample_size > REC_BUFFER_LEN) {
+            sample_size = REC_BUFFER_LEN;
+        }
+        NRF_I2S->RXTXD.MAXCNT = sample_size / 4;
 
-    switch (buf_typecode) {
-    case 'f':
-      for (i = 0; i < sample_size; i++) {
-        *buffer_f++ = current_sb[i];
-      }
-      break;
-    case 'I':
-    case 'L':
-      for (i = 0; i < sample_size; i++) {
-        *buffer_u32++ = current_sb[i] + 16777216;
-      }
-      break;
-    case 'i':
-    case 'l':
-      for (i = 0; i < sample_size; i++) {
-        *buffer_i32++ = ((int32_t *)current_sb)[i];
-      }
-      break;
-    default:
-      asm("bkpt");
-    }
+        while (!NRF_I2S->EVENTS_RXPTRUPD) {
+            //   asm("wfe");
+        }
+        NRF_I2S->EVENTS_RXPTRUPD = 0;
+        uint16_t *current_sb = sb_idx & 1 ? sb_hi : sb_lo;
+        NRF_I2S->RXD.PTR = (uintptr_t) (((++sb_idx) & 1) ? sb_hi : sb_lo);
 
-    length -= sample_size;
-  } while (length != 0);
+        switch (buf_typecode) {
+        case 'f':
+            for (i = 0; i < sample_size; i++) {
+                *buffer_f++ = current_sb[i];
+            }
+            break;
+        case 'I':
+        case 'L':
+            for (i = 0; i < sample_size; i++) {
+                *buffer_u32++ = current_sb[i] + 32768;
+            }
+            break;
+        case 'H':
+            for (i = 0; i < sample_size; i++) {
+                *buffer_u16++ = current_sb[i] + 32768;
+            }
+            break;
+        case 'h':
+            for (i = 0; i < sample_size; i++) {
+                *buffer_s16++ = current_sb[i];
+            }
+            break;
+        case 'i':
+        case 'l':
+            for (i = 0; i < sample_size; i++) {
+                *buffer_s32++ = current_sb[i];
+            }
+            break;
+        default:
+            asm("bkpt");
+        }
+
+        length -= sample_size;
+    } while (length != 0);
   //   NRF_I2S->RXTXD.MAXCNT = 0;
 
   // The second event fires indicating the buffer has filled
