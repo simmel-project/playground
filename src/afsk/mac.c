@@ -19,10 +19,10 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
     case MAC_IDLE:
         // Search until at least /n/ zeros are found.
         // The next transition /might/ be sync.
-        if (state->idle_zeros > 8) {
+        if (state->idle_zeros > 32) {
             if (bit != 0) {
                 state->mstate = MAC_SYNC;
-                // printf("Got bit, transitioning to MAC_SYNC\n");
+                printf("Got bit, transitioning to MAC_SYNC\n");
                 state->bitpos = 6;
                 state->curbyte = 0x80;
                 state->sync_count = 0;
@@ -53,7 +53,7 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
             break;
         }
 
-        // printf("Got MAC byte: %02x\n", g_curbyte);
+        printf("Got MAC byte: %02x\n", state->curbyte);
         /* 8 bits have been read.  Process the resulting byte. */
 
         /* Optimization: check to see if we just read an idle value. */

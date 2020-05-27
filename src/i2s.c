@@ -43,9 +43,9 @@ void nus_start(void) {
 
     // Load buffer number 0 into the pointer.
     buffer_num = 0;
-    NRF_I2S->RXD.PTR = buffers[buffer_num];
+    NRF_I2S->RXD.PTR = buffers[buffer_num & 1];
     NRF_I2S->TXD.PTR = 0xFFFFFFFF;
-    NRF_I2S->RXTXD.MAXCNT = buffer_size;
+    NRF_I2S->RXTXD.MAXCNT = buffer_size / 4; // In units of 32-bit words
 
     NVIC_SetPriority(I2S_IRQn, 2);
     NVIC_EnableIRQ(I2S_IRQn);
@@ -101,11 +101,13 @@ void I2S_IRQHandler(void) {
         // In this case, we must load buffer 1 into the register. Additionally,
         // since buffer 0 is getting written by the hardware, we must indicate
         // that buffer 1 is ready.
-        NRF_I2S->RXD.PTR = buffers[++buffer_num & 2];
+        buffer_num += 1;
+        size_t next_buffer = buffer_num & 1;
+        NRF_I2S->RXD.PTR = buffers[next_buffer];
         NRF_I2S->EVENTS_RXPTRUPD = 0;
 
         i2s_irqs++;
-        i2s_buffer = (int16_t *)buffers[buffer_num & 2];
+        i2s_buffer = (int16_t *)(buffers[next_buffer]);
         i2s_ready = true;
     }
 }

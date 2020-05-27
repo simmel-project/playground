@@ -58,10 +58,10 @@
 
 static const struct demod_config nus_cfg = {
     .sample_rate = 62500,
-    .f_lo = 15000,
-    .f_hi = 17000,
-    .filter_width = 8,
-    .baud_rate = 5001,
+    .f_lo = 10134,
+    .f_hi = 17097,
+    .filter_width = 9,
+    .baud_rate = 3564,
 };
 
 #define BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS 0x0007E000
@@ -99,7 +99,8 @@ volatile uint32_t m_uicr_bootloader_start_address __attribute__((
                                 bootloader is flashed into the chip. */
 
 __attribute__((used)) uint8_t id[3];
-__attribute__((used, aligned(4))) int8_t record_buffer[2048];
+#define RECORD_BUFFER_SIZE 512
+__attribute__((used, aligned(4))) int8_t record_buffer[RECORD_BUFFER_SIZE];
 
 static const struct i2s_pin_config i2s_config = {
     .data_pin_number = (32 + 9),
@@ -111,13 +112,29 @@ volatile uint32_t i2s_irqs;
 volatile int16_t *i2s_buffer = NULL;
 volatile bool i2s_ready = false;
 
+static uint8_t data_buffer[81920];
+static uint32_t data_buffer_offset;
+
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
     cdc_task();
 
     if (i2s_ready) {
         i2s_ready = false;
-        afsk_run((int16_t *)i2s_buffer, 512);
+        // afsk_run((int16_t *)i2s_buffer,
+        //          RECORD_BUFFER_SIZE / 2 / sizeof(int16_t));
+        unsigned int i;
+        uint16_t *output_buffer = (uint16_t *)&data_buffer[data_buffer_offset];
+        uint16_t *input_buffer = (uint16_t *)i2s_buffer;
+        for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint16_t); i+=2) {
+            output_buffer[i/2] = input_buffer[i];
+        }
+        // memcpy(&data_buffer[data_buffer_offset], (void *)i2s_buffer,
+        //        RECORD_BUFFER_SIZE / 2);
+        data_buffer_offset += RECORD_BUFFER_SIZE / 4;
+        if (data_buffer_offset >= sizeof(data_buffer)) {
+            data_buffer_offset = 0;
+        }
         if (i2s_ready) {
             printf("I2S UNDERRUN!!!");
         }
@@ -139,16 +156,6 @@ int main(void) {
     tusb_init();
     afsk_init(&nus_cfg);
 
-    while (!tud_cdc_n_connected(0)) {
-        background_tasks();
-    }
-
-    // USB CDC is always unreliable during first connection. Use this cheesy
-    // delay to work around that problem.
-    for (i = 0; i < 16384; i++) {
-        background_tasks();
-    }
-
     spi_init();
 
     // Get the SPI ID, just to make sure things are working.
@@ -166,11 +173,20 @@ int main(void) {
 
     spi_deinit();
 
-    printf("SPI ID: %02x %02x %02x\n", id[0], id[1], id[2]);
-
-    nus_init(&i2s_config, record_buffer,
-             sizeof(record_buffer) / sizeof(*record_buffer));
+    nus_init(&i2s_config, record_buffer, sizeof(record_buffer));
     nus_start();
+
+    while (!tud_cdc_n_connected(0)) {
+        background_tasks();
+    }
+
+    // USB CDC is always unreliable during first connection. Use this cheesy
+    // delay to work around that problem.
+    for (i = 0; i < 16384; i++) {
+        background_tasks();
+    }
+
+    printf("SPI ID: %02x %02x %02x\n", id[0], id[1], id[2]);
 
     uint32_t usb_irqs = 0;
     uint32_t last_i2s_irqs = i2s_irqs;
@@ -178,7 +194,8 @@ int main(void) {
         background_tasks();
         usb_irqs++;
         if (i2s_irqs != last_i2s_irqs) {
-            // printf("I2S IRQ count: %d  USB IRQ count: %d\n", i2s_irqs, usb_irqs);
+            // printf("I2S IRQ count: %d  USB IRQ count: %d\n", i2s_irqs,
+            // usb_irqs);
             last_i2s_irqs = i2s_irqs;
             usb_irqs = 0;
         }
