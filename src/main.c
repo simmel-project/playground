@@ -123,15 +123,28 @@ static void background_tasks(void) {
         i2s_ready = false;
         // afsk_run((int16_t *)i2s_buffer,
         //          RECORD_BUFFER_SIZE / 2 / sizeof(int16_t));
+
         unsigned int i;
-        uint16_t *output_buffer = (uint16_t *)&data_buffer[data_buffer_offset];
-        uint16_t *input_buffer = (uint16_t *)i2s_buffer;
-        for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint16_t); i+=2) {
-            output_buffer[i/2] = input_buffer[i];
+        uint32_t *output_buffer = (uint32_t *)&data_buffer[data_buffer_offset];
+        uint32_t *input_buffer = (uint32_t *)i2s_buffer;
+        for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint32_t); i+=2) {
+            uint32_t words = input_buffer[i];
+            output_buffer[i/2] = (((words>>16) & 0xffff) | ((words<<16) & 0xffff0000)) << 8;
         }
+        data_buffer_offset += RECORD_BUFFER_SIZE / 4;
+
+        // unsigned int i;
+        // uint16_t *output_buffer = (uint16_t *)&data_buffer[data_buffer_offset];
+        // uint16_t *input_buffer = (uint16_t *)i2s_buffer;
+        // for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint16_t); i+=2) {
+        //     output_buffer[i/2] = input_buffer[i];
+        // }
+        // data_buffer_offset += RECORD_BUFFER_SIZE / 4;
+
         // memcpy(&data_buffer[data_buffer_offset], (void *)i2s_buffer,
         //        RECORD_BUFFER_SIZE / 2);
-        data_buffer_offset += RECORD_BUFFER_SIZE / 4;
+        // data_buffer_offset += RECORD_BUFFER_SIZE / 2;
+
         if (data_buffer_offset >= sizeof(data_buffer)) {
             data_buffer_offset = 0;
         }
