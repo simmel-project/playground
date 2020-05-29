@@ -108,14 +108,11 @@ void afsk_init(const struct demod_config *cfg) {
 }
 
 void afsk_run(int16_t *samples, size_t nsamples) {
-    uint32_t remaining_words = nsamples;
-    int16_t *decoding_buffer_offset = samples;
+    size_t processed_samples;
 
-    while (remaining_words > 0) {
-        int bit = 0;
-        int result = fsk_demod(&demod_table, &demod_state, &bit,
-                               decoding_buffer_offset, remaining_words);
-        if (result != -1) {
+    int bit = 0;
+    while (nsamples > 0) {
+        if (fsk_demod(&demod_table, &demod_state, &bit, samples, nsamples, &processed_samples)) {
             if (mac_put_bit(&mac_state, bit, &packet, sizeof(packet))) {
                 if (validate_packet(&packet, 0)) {
                     packet_count++;
@@ -123,9 +120,8 @@ void afsk_run(int16_t *samples, size_t nsamples) {
                     corrupt_count++;
                 }
             }
-            decoding_buffer_offset += (remaining_words - result);
-            remaining_words = result;
         }
+        nsamples -= processed_samples;
+        samples += processed_samples;
     }
-    // return packet_count;
 }

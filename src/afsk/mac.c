@@ -7,6 +7,10 @@
 
 extern uint32_t debug_print_sync;
 
+// uint8_t byte_log[65536];
+// uint8_t bit_offset = 8;
+// uint32_t byte_log_offset;
+
 // put_bit with a MAC layer on it
 int mac_put_bit(struct mac_state *state, int bit, void *buffer,
                 unsigned int buffer_size) {
@@ -15,6 +19,16 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
 
     assert(buffer_size >= sizeof(demod_pkt_t));
 
+    // byte_log[byte_log_offset] |= (bit << --bit_offset);
+    // if (!bit_offset) {
+    //     byte_log_offset++;
+    //     if (byte_log_offset > sizeof(byte_log)) {
+    //         byte_log_offset = 0;
+    //     }
+    //     byte_log[byte_log_offset] = 0;
+    //     bit_offset = 8;
+    // }
+
     switch (state->mstate) {
     case MAC_IDLE:
         // Search until at least /n/ zeros are found.
@@ -22,7 +36,7 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
         if (state->idle_zeros > 32) {
             if (bit != 0) {
                 state->mstate = MAC_SYNC;
-                printf("Got bit, transitioning to MAC_SYNC\n");
+                // printf("Got bit, transitioning to MAC_SYNC\n");
                 state->bitpos = 6;
                 state->curbyte = 0x80;
                 state->sync_count = 0;
@@ -53,7 +67,7 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
             break;
         }
 
-        printf("Got MAC byte: %02x\n", state->curbyte);
+        // printf("Got MAC byte: %02x\n", state->curbyte);
         /* 8 bits have been read.  Process the resulting byte. */
 
         /* Optimization: check to see if we just read an idle value. */
@@ -99,7 +113,6 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
         break;
 
     case MAC_PACKET:
-        // printf("MAC_PACKET");
         /* If we haven't figured out the length, but we've read the entire
          * header, figure out the length.  Or exit the loop if it's not a
          * valid packet.

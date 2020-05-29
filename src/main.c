@@ -22,17 +22,9 @@
  * THE SOFTWARE.
  */
 
-/**
- * -# Receive start data packet.
- * -# Based on start packet, prepare NVM area to store received data.
- * -# Receive data packet.
- * -# Validate data packet.
- * -# Write Data packet to NVM.
- * -# If not finished - Wait for next packet.
- * -# Receive stop data packet.
- * -# Activate Image, boot application.
- *
- */
+// #define RECORD_TEST_16
+// #define RECORD_TEST_32
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -58,10 +50,21 @@
 
 static const struct demod_config nus_cfg = {
     .sample_rate = 62500,
-    .f_lo = 10134,
-    .f_hi = 17097,
-    .filter_width = 9,
-    .baud_rate = 3564,
+
+    // .baud_rate = 3564,
+    // .f_lo = 10134,
+    // .f_hi = 17097,
+    // .filter_width = 9,
+
+    .baud_rate = 4784,
+    .f_lo = 6017,
+    .f_hi = 11452,
+    .filter_width = 8,
+
+    // .baud_rate = 8000,
+    // .f_lo = 8666,
+    // .f_hi = 12500,
+    // .filter_width = 9,
 };
 
 #define BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS 0x0007E000
@@ -99,7 +102,11 @@ volatile uint32_t m_uicr_bootloader_start_address __attribute__((
                                 bootloader is flashed into the chip. */
 
 __attribute__((used)) uint8_t id[3];
-#define RECORD_BUFFER_SIZE 512
+#if defined(RECORD_TEST_16) || defined(RECORD_TEST_32)
+#define RECORD_BUFFER_SIZE 1024
+#else
+#define RECORD_BUFFER_SIZE 2048
+#endif
 __attribute__((used, aligned(4))) int8_t record_buffer[RECORD_BUFFER_SIZE];
 
 static const struct i2s_pin_config i2s_config = {
@@ -112,8 +119,19 @@ volatile uint32_t i2s_irqs;
 volatile int16_t *i2s_buffer = NULL;
 volatile bool i2s_ready = false;
 
+#ifdef RECORD_TEST_32
 static uint8_t data_buffer[81920];
 static uint32_t data_buffer_offset;
+#endif
+
+#ifdef RECORD_TEST_16
+#define DATA_BUFFER_ELEMENT_COUNT (81920 / 2)
+static int16_t data_buffer[DATA_BUFFER_ELEMENT_COUNT];
+static uint32_t data_buffer_offset;
+#endif
+
+int32_t agc_div;
+int32_t agc_peak = 0;
 
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
@@ -121,22 +139,120 @@ static void background_tasks(void) {
 
     if (i2s_ready) {
         i2s_ready = false;
-        // afsk_run((int16_t *)i2s_buffer,
-        //          RECORD_BUFFER_SIZE / 2 / sizeof(int16_t));
 
+        const size_t samples_per_loop =
+            RECORD_BUFFER_SIZE / 2 / sizeof(int32_t) / 2;
+
+        // Cast to 32-bit int pointer, since we need to swap the values.
+        uint32_t *input_buffer = (uint32_t *)i2s_buffer;
+
+        // Current peak value in this buffer. Always a positive value.
+        int32_t current_peak = 0;
+        unsigned int i;
+
+#if defined(RECORD_TEST_16)
+        static int16_t *output_buffer_ptr = &data_buffer[0];
+        // Every other 32-bit word in `input_buffer` is 0, so skip over it.
+        // Additionally, we're only interested in one half of the record
+        // buffer, since the other half is being written to.
+        for (i = 0; i < samples_per_loop; i++) {
+            uint32_t unswapped = input_buffer[i * 2];
+            int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
+                                         ((unswapped << 16) & 0xffff0000)));
+            if (swapped > current_peak) {
+                current_peak = swapped;
+            }
+
+            swapped = swapped / agc_div;
+            *output_buffer_ptr++ = swapped;
+
+            // Advance the output buffer pointer, wrapping when it reaches the
+            // end.
+            if (output_buffer_ptr >= &data_buffer[DATA_BUFFER_ELEMENT_COUNT])
+                output_buffer_ptr = &data_buffer[0];
+        }
+
+        // Advance the master pointer to the output buffer, which we will use
+        // in the next iteration of this loop.
+        if (data_buffer_offset >= sizeof(data_buffer) / sizeof(*data_buffer)) {
+            data_buffer_offset = 0;
+        }
+
+        if (current_peak > agc_peak) {
+            agc_peak += 1024;
+        } else if ((current_peak < agc_peak - 1024) && agc_peak > 256) {
+            agc_peak -= 256;
+        }
+        // Target the audio to be +/- 16384 (this value / 2)
+        agc_div = (agc_peak / 8192);
+        if (agc_div < 1) {
+            agc_div = 1;
+        };
+
+        static int loops = 0;
+        loops++;
+        if ((loops & 31) == 0) {
+            printf("agc_div: %d  agc_peak: %d  current_peak: %d\n", agc_div,
+                   agc_peak, current_peak);
+        }
+#elif defined(RECORD_TEST_32)
+        // Used for sampling during development. Read out the buffer with:
+        // ```
+        // (gdb) dump binary memory tone.raw data_buffer
+        // data_buffer+sizeof(data_buffer)
+        // ```
         unsigned int i;
         uint32_t *output_buffer = (uint32_t *)&data_buffer[data_buffer_offset];
         uint32_t *input_buffer = (uint32_t *)i2s_buffer;
-        for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint32_t); i+=2) {
+        for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint32_t); i += 2) {
             uint32_t words = input_buffer[i];
-            output_buffer[i/2] = (((words>>16) & 0xffff) | ((words<<16) & 0xffff0000)) << 8;
+            output_buffer[i / 2] =
+                (((words >> 16) & 0xffff) | ((words << 16) & 0xffff0000)) << 8;
         }
         data_buffer_offset += RECORD_BUFFER_SIZE / 4;
+        if (data_buffer_offset >= sizeof(data_buffer)) {
+            data_buffer_offset = 0;
+        }
+#else
+        // Every other 32-bit word in `input_buffer` is 0, so skip over it.
+        // Additionally, we're only interested in one half of the record
+        // buffer, since the other half is being written to.
+        int16_t output_buffer[samples_per_loop];
+        int16_t *output_buffer_ptr = output_buffer;
+        for (i = 0; i < samples_per_loop; i++) {
+            uint32_t unswapped = input_buffer[i * 2];
+            int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
+                                         ((unswapped << 16) & 0xffff0000)));
+
+            // Add samples that are greater than 0 to an AGC mask. We'll
+            // determine how many leading zeroes there are to calculate how many
+            // bits to shift by during the next run.
+            if (swapped > current_peak) {
+                current_peak = swapped;
+            }
+
+            swapped = swapped / agc_div;
+            *output_buffer_ptr++ = swapped;
+        }
+        afsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
+
+        if (current_peak > agc_peak) {
+            agc_peak += 1024;
+        } else if ((current_peak < agc_peak - 1024) && agc_peak > 256) {
+            agc_peak -= 256;
+        }
+        // Target the audio to be +/- 16384 (this value / 2)
+        agc_div = (agc_peak / 16384);
+        if (agc_div < 1) {
+            agc_div = 1;
+        };
+#endif
 
         // unsigned int i;
-        // uint16_t *output_buffer = (uint16_t *)&data_buffer[data_buffer_offset];
-        // uint16_t *input_buffer = (uint16_t *)i2s_buffer;
-        // for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint16_t); i+=2) {
+        // uint16_t *output_buffer = (uint16_t
+        // *)&data_buffer[data_buffer_offset]; uint16_t *input_buffer =
+        // (uint16_t *)i2s_buffer; for (i = 0; i < RECORD_BUFFER_SIZE / 2 /
+        // sizeof(uint16_t); i+=2) {
         //     output_buffer[i/2] = input_buffer[i];
         // }
         // data_buffer_offset += RECORD_BUFFER_SIZE / 4;
@@ -145,11 +261,11 @@ static void background_tasks(void) {
         //        RECORD_BUFFER_SIZE / 2);
         // data_buffer_offset += RECORD_BUFFER_SIZE / 2;
 
-        if (data_buffer_offset >= sizeof(data_buffer)) {
-            data_buffer_offset = 0;
-        }
+        // if (data_buffer_offset >= sizeof(data_buffer)) {
+        //     data_buffer_offset = 0;
+        // }
         if (i2s_ready) {
-            printf("I2S UNDERRUN!!!");
+            printf("I2S UNDERRUN!!!\n");
         }
     }
 }

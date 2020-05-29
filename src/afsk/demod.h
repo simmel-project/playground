@@ -63,6 +63,6 @@ void fsk_demod_generate_table(FSK_demod_const *fsk_table, uint32_t baud_rate,
 void fsk_demod_init(const FSK_demod_const *fsk_table,
                     FSK_demod_state *fsk_state);
 int fsk_demod(const FSK_demod_const *fsk_table, FSK_demod_state *fsk_state,
-              int *bit, demod_sample_t *samples, uint32_t nb);
+              int *bit, demod_sample_t *samples, size_t nb, size_t *processed_samples);
 
 #endif

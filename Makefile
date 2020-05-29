@@ -140,9 +140,9 @@ INC_PATHS = $(addprefix -I,$(IPATH))
 
 # Debugging/Optimization
 ifeq ($(DEBUG), 1)
-	CFLAGS += -Og -ggdb3
+	CFLAGS += -O2 -ggdb3
 else
-	CFLAGS += -Og -ggdb3
+	CFLAGS += -O2 -ggdb3
 endif
 
 #flags common to all targets

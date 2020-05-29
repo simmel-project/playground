@@ -40,14 +40,29 @@ static int32_t FSK_core(demod_sample_t *b, const FSK_demod_const *table) {
     return sum;
 }
 
+#ifdef CAPTURE_BUFFER
+int16_t saved_samples[32768];
+uint32_t saved_samples_ptr;
+#endif
+
 int fsk_demod(const FSK_demod_const *table, FSK_demod_state *state, int *bit,
-              demod_sample_t *samples, uint32_t nb) {
+              demod_sample_t *samples, size_t nb, size_t *ps) {
     int new_sample;
     int32_t sum;
     demod_sample_t *b;
+    size_t processed_samples = 0;
 
     while (nb-- > 0) {
+        processed_samples++;
+
+#ifdef CAPTURE_BUFFER
         /* add a new sample in the demodulation filter */
+        saved_samples[saved_samples_ptr++] = *samples;
+        if (saved_samples_ptr >= 32768) {
+            saved_samples_ptr = 0;
+        }
+#endif
+
         state->filter_buf[state->buf_offset++] = *samples++ >> state->shift;
 
         // Duplicate the top half of the table into the bottom half,
@@ -130,10 +145,12 @@ int fsk_demod(const FSK_demod_const *table, FSK_demod_state *state, int *bit,
             *bit = state->last_sample;
             state->transition_count = 0;
             // state->last_bit = state->last_sample;
-            return nb;
+            *ps = processed_samples;
+            return 1;
         }
     }
-    return -1;
+    *ps = processed_samples;
+    return 0;
 }
 
 void fsk_demod_init(const FSK_demod_const *table, FSK_demod_state *state) {
