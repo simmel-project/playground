@@ -114,7 +114,7 @@ void afsk_run(int16_t *samples, size_t nsamples) {
     while (nsamples > 0) {
         if (fsk_demod(&demod_table, &demod_state, &bit, samples, nsamples, &processed_samples)) {
             if (mac_put_bit(&mac_state, bit, &packet, sizeof(packet))) {
-                if (validate_packet(&packet, 0)) {
+                if (validate_packet(&packet, 1)) {
                     packet_count++;
                 } else {
                     corrupt_count++;

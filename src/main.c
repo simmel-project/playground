@@ -130,8 +130,22 @@ static int16_t data_buffer[DATA_BUFFER_ELEMENT_COUNT];
 static uint32_t data_buffer_offset;
 #endif
 
-int32_t agc_div;
-int32_t agc_peak = 0;
+
+static int32_t agc_run(int32_t current_peak) {
+    static float agc_offset = 10;
+    if (current_peak > agc_offset) {
+        agc_offset *= 1.7;
+    } else if ((current_peak < agc_offset - 400) && agc_offset > 101) {
+        agc_offset *= 0.995;
+    }
+
+    // Target the audio to be +/- 16384 (this value / 2)
+    int32_t agc_div = (agc_offset / 20000.0);
+    if (agc_div < 1) {
+        agc_div = 1;
+    }
+    return agc_div;
+}
 
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
@@ -149,6 +163,7 @@ static void background_tasks(void) {
         // Current peak value in this buffer. Always a positive value.
         int32_t current_peak = 0;
         unsigned int i;
+        static int32_t agc_div;
 
 #if defined(RECORD_TEST_16)
         static int16_t *output_buffer_ptr = &data_buffer[0];
@@ -219,6 +234,7 @@ static void background_tasks(void) {
         // buffer, since the other half is being written to.
         int16_t output_buffer[samples_per_loop];
         int16_t *output_buffer_ptr = output_buffer;
+        uint32_t clipped = 0;
         for (i = 0; i < samples_per_loop; i++) {
             uint32_t unswapped = input_buffer[i * 2];
             int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
@@ -232,20 +248,16 @@ static void background_tasks(void) {
             }
 
             swapped = swapped / agc_div;
+            if ((swapped > 32768) || (swapped < -32767)) {
+                clipped++;
+            }
             *output_buffer_ptr++ = swapped;
         }
-        afsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
-
-        if (current_peak > agc_peak) {
-            agc_peak += 1024;
-        } else if ((current_peak < agc_peak - 1024) && agc_peak > 256) {
-            agc_peak -= 256;
+        if (clipped) {
+            printf("Clipped %d samples\n", clipped);
         }
-        // Target the audio to be +/- 16384 (this value / 2)
-        agc_div = (agc_peak / 16384);
-        if (agc_div < 1) {
-            agc_div = 1;
-        };
+        afsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
+        agc_div = agc_run(current_peak);
 #endif
 
         // unsigned int i;

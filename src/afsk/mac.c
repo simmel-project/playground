@@ -121,8 +121,10 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
 
             /* If the version number doesn't match, abandon ship. */
             if ((pkt->header.version != PKT_VER_1) &&
-                (pkt->header.version != PKT_VER_2))
+                (pkt->header.version != PKT_VER_2)) {
+                printf("Unrecognized packet version: %d\n", pkt->header.version);
                 goto make_idle;
+            }
 
             if (pkt->header.type == PKTTYPE_CTRL)
                 state->pkt_len = CTRL_LEN;
@@ -154,6 +156,7 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
         /* If we've finished reading the packet, indicate it's ready */
         if (state->pkt_len && state->pkt_read >= state->pkt_len) {
             packet_done = 1; // flag that the packet is ready
+            printf("Received packet\n");
             goto make_idle;
             break;
         }
