@@ -131,16 +131,17 @@ static uint32_t data_buffer_offset;
 #endif
 
 
+float agc_offset = 10;
+int32_t agc_div;
 static int32_t agc_run(int32_t current_peak) {
-    static float agc_offset = 10;
     if (current_peak > agc_offset) {
-        agc_offset *= 1.7;
+        agc_offset *= 1.01;
     } else if ((current_peak < agc_offset - 400) && agc_offset > 101) {
-        agc_offset *= 0.995;
+        agc_offset *= 0.9995;
     }
 
     // Target the audio to be +/- 16384 (this value / 2)
-    int32_t agc_div = (agc_offset / 20000.0);
+    agc_div = (agc_offset / 24000.0);
     if (agc_div < 1) {
         agc_div = 1;
     }
@@ -163,7 +164,6 @@ static void background_tasks(void) {
         // Current peak value in this buffer. Always a positive value.
         int32_t current_peak = 0;
         unsigned int i;
-        static int32_t agc_div;
 
 #if defined(RECORD_TEST_16)
         static int16_t *output_buffer_ptr = &data_buffer[0];
@@ -253,7 +253,7 @@ static void background_tasks(void) {
             }
             *output_buffer_ptr++ = swapped;
         }
-        if (clipped) {
+        if (clipped > 5) {
             printf("Clipped %d samples\n", clipped);
         }
         afsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
