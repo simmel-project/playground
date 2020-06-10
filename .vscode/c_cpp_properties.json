@@ -1,0 +1,42 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "windowsSdkVersion": "10.0.18362.0",
+            "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.25.28610/bin/Hostx64/x64/cl.exe",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}/src/cmsis/include"
+            ]
+        },
+        {
+            "name": "Simmel",
+            "defines": [
+                "ARM_MATH_CM4",
+                "__FPU_PRESENT=1"
+            ],
+            "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.25.28610/bin/Hostx64/x64/cl.exe",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}/src/cmsis/include",
+                "${workspaceFolder}/lib/nrfx/hal",
+                "${workspaceFolder}/lib/nrfx/drivers/include",
+                "${workspaceFolder}/lib/nrfx",
+                "${workspaceFolder}/lib/nrfx/templates/nRF52833",
+                "${workspaceFolder}/lib/nrfx/mdk",
+                "${workspaceFolder}/lib/nrfx/templates",
+                "${workspaceFolder}/lib/tinyusb/src"
+            ]
+        }
+    ],
+    "version": 4
+}

@@ -20,5 +20,13 @@
         "${workspacePath}/lib/tinyusb/src/osal",
         "${workspacePath}/lib/tinyusb/src/common",
     ],
-    "C_Cpp.dimInactiveRegions": false
+    "C_Cpp.dimInactiveRegions": false,
+    "C_Cpp.errorSquiggles": "Enabled",
+    "C_Cpp.default.forcedInclude": [
+        "src/cmsis/include/arm_math.h"
+    ],
+    "C_Cpp.default.defines": [
+        "ARM_MATH_CM4",
+        "__FPU_PRESENT=1"
+    ]
 }
