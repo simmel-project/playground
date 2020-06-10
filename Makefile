@@ -67,7 +67,8 @@ OUT_FILE = nus-test
 
 # all files in src
 C_SRC += $(wildcard src/*.c)
-C_SRC += $(wildcard src/afsk/*.c)
+C_SRC += $(wildcard src/bpsk/*.c)
+C_SRC += $(wildcard src/cmsis/source/*.c)
 
 # all sources files in specific board
 C_SRC += $(wildcard src/boards/$(BOARD)/*.c)
@@ -101,7 +102,7 @@ IPATH += src
 IPATH += src/boards/$(BOARD)
 
 IPATH += src/cmsis/include
-IPATH += src/afsk
+IPATH += src/bpsk
 IPATH += src/boards
 IPATH += $(TUSB_PATH)
 
@@ -150,6 +151,9 @@ CFLAGS += \
 	-mthumb \
 	-mabi=aapcs \
 	-mcpu=cortex-m4 \
+	-DARM_MATH_CM4 \
+	-D__FPU_PRESENT=1 \
+	-mtune=cortex-m4 \
 	-mfloat-abi=hard \
 	-mfpu=fpv4-sp-d16 \
 	-ffunction-sections \

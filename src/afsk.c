@@ -3,9 +3,9 @@
 
 #include "afsk.h"
 
-#include "afsk/demod.h"
-#include "afsk/mac.h"
-#include "afsk/murmur3.h"
+#include "bpsk/demod.h"
+#include "bpsk/mac.h"
+#include "bpsk/murmur3.h"
 
 #include "printf.h"
 
