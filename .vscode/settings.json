@@ -1,0 +1,24 @@
+{
+    "files.associations": {
+        "variant": "c",
+        "nrfx_power.h": "c",
+        "nrfx_nvmc.h": "c",
+        "app_scheduler.h": "c",
+        "dfu_transport.h": "c",
+        "bootloader_util.h": "c",
+        "esplanade_mac.h": "c"
+    },
+    "C_Cpp.vcpkg.enabled": false,
+    "C_Cpp.default.intelliSenseMode": "gcc-arm",
+    "C_Cpp.default.includePath": [
+        "${workspacePath}/src",
+        "${workspacePath}/lib/nrfx/hal",
+        "${workspacePath}/lib/nrfx/drivers/include",
+        "${workspacePath}/lib/nrfx/soc",
+        "${workspacePath}/lib/tinyusb/src",
+        "${workspacePath}/lib/tinyusb/src/device",
+        "${workspacePath}/lib/tinyusb/src/osal",
+        "${workspacePath}/lib/tinyusb/src/common",
+    ],
+    "C_Cpp.dimInactiveRegions": false
+}
