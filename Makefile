@@ -140,19 +140,15 @@ INC_PATHS = $(addprefix -I,$(IPATH))
 #------------------------------------------------------------------------------
 
 # Debugging/Optimization
-ifeq ($(DEBUG), 1)
-	CFLAGS += -O2 -ggdb3
-else
-	CFLAGS += -O2 -ggdb3
-endif
+CFLAGS += -O3 -ggdb3
+
+CFLAGS += -DPLAYGROUND -DARM_MATH_CM4 -D__FPU_PRESENT=1
 
 #flags common to all targets
 CFLAGS += \
 	-mthumb \
 	-mabi=aapcs \
 	-mcpu=cortex-m4 \
-	-DARM_MATH_CM4 \
-	-D__FPU_PRESENT=1 \
 	-mtune=cortex-m4 \
 	-mfloat-abi=hard \
 	-mfpu=fpv4-sp-d16 \

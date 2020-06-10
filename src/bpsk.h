@@ -1,15 +1,9 @@
-#ifndef __AFSK_H__
-#define __AFSK_H__
+#ifndef __BPSK_H__
+#define __BPSK_H__
 
 #include <stdint.h>
 
-struct demod_config {
-    uint32_t sample_rate;
-    uint32_t carrier_tone;
-    uint32_t baud_rate;
-};
-
 void bpsk_init(void);
-void bpsk_run(int16_t *samples, size_t nsamples);
+void bpsk_run(int16_t *samples, uint32_t nsamples);
 
-#endif /* __AFSK_H__ */
+#endif /* __BPSK_H__ */

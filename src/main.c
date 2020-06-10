@@ -162,6 +162,10 @@ static void background_tasks(void) {
         current_peak = 0;
         unsigned int i;
 
+        // if ((i2s_runs & 0xff) == 0) {
+        //     printf("Processed %d loops of I2S\n", i2s_runs);
+        // }
+
 #if defined(RECORD_TEST_16)
         static int16_t *output_buffer_ptr = &data_buffer[0];
         // Every other 32-bit word in `input_buffer` is 0, so skip over it.

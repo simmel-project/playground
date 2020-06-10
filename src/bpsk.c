@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
+#include <inttypes.h>
 
 #include "bpsk.h"
 
@@ -20,38 +22,46 @@ static demod_pkt_t packet;
 volatile uint32_t debug_print_sync = 1;
 volatile uint32_t debug_print_status = 1;
 
-static int validate_packet(demod_pkt_t *pkt, int should_print) {
+static int validate_packet(demod_pkt_t *pkt, int should_print)
+{
     unsigned int i;
     demod_pkt_ctrl_t *cpkt = &pkt->ctrl_pkt;
     demod_pkt_data_t *dpkt = &pkt->data_pkt;
     uint32_t hash;
 
-    if (should_print) {
+    if (should_print)
+    {
         printf("Got packet:\n");
         printf("    Header:\n");
         printf("        Version: %d\n", pkt->header.version);
-        printf("           Type: %d  ", pkt->header.type);
+        printf("           Type: %" PRId32 "  ", pkt->header.type);
     }
-    switch (pkt->header.type) {
+    switch (pkt->header.type)
+    {
 
     case PKTTYPE_CTRL:
-        if (should_print) {
+        if (should_print)
+        {
             printf("Ctrl Packet\n");
             printf("       Reserved: %d\n", cpkt->reserved);
-            printf("         Length: %ld\n", cpkt->length);
-            printf("      Full Hash: %08lx\n", cpkt->fullhash);
+            printf("         Length: %" PRId32 "\n", cpkt->length);
+            printf("      Full Hash: %" PRIx32 "\n", cpkt->fullhash);
             printf("           GUID: ");
-            for (i = 0; i < 16; i++) printf("%02x ", cpkt->guid[i]);
+            for (i = 0; i < 16; i++)
+                printf("%" PRIx8 " ", cpkt->guid[i]);
             printf("\n");
-            printf("    Packet Hash: %08lx ", cpkt->hash);
+            printf("    Packet Hash: %" PRIx32 " ", cpkt->hash);
         }
         MurmurHash3_x86_32((uint8_t *)cpkt, sizeof(*cpkt) - sizeof(cpkt->hash),
                            MURMUR_SEED_BLOCK, &hash);
-        if (hash != cpkt->hash) {
-            if (should_print) printf("!= %08lx\n", hash);
+        if (hash != cpkt->hash)
+        {
+            if (should_print)
+                printf("!= %" PRIx32 "\n", hash);
             return 0;
         }
-        if (should_print) printf("Ok\n");
+        if (should_print)
+            printf("Ok\n");
         break;
 
     case PKTTYPE_DATA:
@@ -59,14 +69,18 @@ static int validate_packet(demod_pkt_t *pkt, int should_print) {
         // don't xor the header or the ending hash, but xor
         // everything else..
         for (i = sizeof(pkt->header); i < sizeof(*dpkt) - sizeof(dpkt->hash);
-             i++) {
-            if (pkt->header.version == PKT_VER_1) {
+             i++)
+        {
+            if (pkt->header.version == PKT_VER_1)
+            {
                 // baud striping on alpha and before
                 if ((i % 16) == 7)
                     ((uint8_t *)pkt)[i] ^= 0x55;
                 else if ((i % 16) == 15)
                     ((uint8_t *)pkt)[i] ^= 0xAA;
-            } else if (pkt->header.version == PKT_VER_2) {
+            }
+            else if (pkt->header.version == PKT_VER_2)
+            {
                 // more dense baud striping to be used on beta and
                 // beyond
                 if ((i % 3) == 0)
@@ -75,52 +89,68 @@ static int validate_packet(demod_pkt_t *pkt, int should_print) {
                     ((uint8_t *)pkt)[i] ^= 0xac;
                 else if ((i % 3) == 2)
                     ((uint8_t *)pkt)[i] ^= 0x95;
-            } else if (pkt->header.version == PKT_VER_3) {
+            }
+            else if (pkt->header.version == PKT_VER_3)
+            {
                 // Nothing to do
             }
         }
 
-        if (should_print) {
+        if (should_print)
+        {
             printf("Data Packet\n");
-            printf("   Block Number: %d\n", dpkt->block);
-            printf("    Packet Hash: %08lx ", dpkt->hash);
+            printf("   Block Number: %" PRId32 "\n", dpkt->block);
+            printf("    Packet Hash: %" PRIx32 " ", dpkt->hash);
         }
         /* Make sure the packet's hash is correct. */
         MurmurHash3_x86_32((uint8_t *)dpkt, sizeof(*dpkt) - sizeof(dpkt->hash),
                            MURMUR_SEED_BLOCK, &hash);
-        if (hash != dpkt->hash) {
-            if (should_print) printf("!= %08lx\n", hash);
+        if (hash != dpkt->hash)
+        {
+            if (should_print)
+                printf("!= %" PRIx32 "\n", hash);
             return 0;
         }
-        if (should_print) printf("Ok\n");
+        if (should_print)
+            printf("Ok\n");
         break;
 
     default:
-        if (should_print) printf(" (unknown type)\n");
+        if (should_print)
+            printf(" (unknown type)\n");
         return 0;
         break;
     }
     return 1;
 }
 
-void bpsk_init(void) {
+void bpsk_init(void)
+{
     bpsk_demod_init();
 }
 
-void bpsk_run(int16_t *samples, size_t nsamples) {
-    size_t processed_samples;
+void bpsk_run(int16_t *samples, uint32_t nsamples)
+{
+    uint32_t processed_samples;
 
     int bit = 0;
-    while (nsamples > 0) {
-        if (bpsk_demod(&bit, samples, nsamples, &processed_samples)) {
-            if (mac_put_bit(&mac_state, bit, &packet, sizeof(packet))) {
-                if (validate_packet(&packet, 1)) {
+    while (nsamples > 0)
+    {
+        if (bpsk_demod(&bit, samples, nsamples, &processed_samples))
+        {
+            if (mac_put_bit(&mac_state, bit, &packet, sizeof(packet)))
+            {
+                if (validate_packet(&packet, 1))
+                {
                     packet_count++;
-                } else {
+                }
+                else
+                {
                     corrupt_count++;
                 }
             }
         }
+        assert(processed_samples <= nsamples);
         nsamples -= processed_samples;
         samples += processed_samples;
     }
