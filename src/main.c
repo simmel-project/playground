@@ -42,32 +42,12 @@
 #include "nrfx_nvmc.h"
 #include "nrfx_spi.h"
 
-#include "afsk.h"
+#include "bpsk.h"
 #include "i2s.h"
 #include "spi.h"
 #include "usb.h"
 
 #include "printf.h"
-
-static const struct demod_config nus_cfg = {
-    .sample_rate = 62500,
-
-
-    // .baud_rate = 6615,
-    // .f_lo = 19476,
-    // .f_hi = 25799,
-    // .filter_width = 8,
-
-    .baud_rate = 4315,
-    .f_lo =  9291,
-    .f_hi = 13701,
-    .filter_width = 8,
-
-    // .baud_rate = 8000,
-    // .f_lo = 8666,
-    // .f_hi = 12500,
-    // .filter_width = 9,
-};
 
 #define BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS 0x0007E000
 // This must match the value in `nrf52833_s140_v7.ld`
@@ -140,35 +120,31 @@ volatile float agc_min = 10;
 volatile float agc_reduce_threshold = 300;
 uint32_t clipped_samples;
 
-volatile int32_t agc_div;
-static int32_t agc_run(int32_t current_peak) {
-    if (current_peak > agc_offset) {
-        agc_offset *= agc_increase;
-    } else if ((current_peak < agc_offset - agc_reduce_threshold) &&
-               agc_offset > agc_min) {
-        agc_offset *= agc_decrease;
-    }
+// volatile int32_t agc_div;
+// static int32_t agc_run(int32_t current_peak) {
+//     if (current_peak > agc_offset) {
+//         agc_offset *= agc_increase;
+//     } else if ((current_peak < agc_offset - agc_reduce_threshold) &&
+//                agc_offset > agc_min) {
+//         agc_offset *= agc_decrease;
+//     }
 
-    // Target the audio to be +/- 16384 (this value / 2)
-    agc_div = (agc_offset / agc_target);
-    if (agc_div < 1) {
-        agc_div = 1;
-    }
-    // Set it to some default value if it's gotten out of range
-    if (!isnormal(agc_offset)) {
-        agc_offset = 100000;
-    }
-    return agc_div;
-}
+//     // Target the audio to be +/- 16384 (this value / 2)
+//     agc_div = (agc_offset / agc_target);
+//     if (agc_div < 1) {
+//         agc_div = 1;
+//     }
+//     // Set it to some default value if it's gotten out of range
+//     if (!isnormal(agc_offset)) {
+//         agc_offset = 100000;
+//     }
+//     return agc_div;
+// }
 
-extern uint32_t saved_samples_ptr;
 
 uint32_t i2s_runs = 0;
 int32_t current_peak = 0;
 static void background_tasks(void) {
-    if (saved_samples_ptr > 32768) {
-        asm("bkpt #0");
-    }
     tud_task(); // tinyusb device task
     cdc_task();
 
@@ -261,21 +237,21 @@ static void background_tasks(void) {
             int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
                                          ((unswapped << 16) & 0xffff0000)));
 
-            // Add samples that are greater than 0 to an AGC mask. We'll
-            // determine how many leading zeroes there are to calculate how many
-            // bits to shift by during the next run.
-            if (swapped > current_peak) {
-                current_peak = swapped;
-            }
+            // // Add samples that are greater than 0 to an AGC mask. We'll
+            // // determine how many leading zeroes there are to calculate how many
+            // // bits to shift by during the next run.
+            // if (swapped > current_peak) {
+            //     current_peak = swapped;
+            // }
 
-            swapped = swapped / agc_div;
-            if (swapped > 32767) {
-                swapped = 32767;
-                clipped_samples++;
-            } else if (swapped < -32767) {
-                swapped = -32767;
-                clipped_samples++;
-            }
+            // swapped = swapped / agc_div;
+            // if (swapped > 32767) {
+            //     swapped = 32767;
+            //     clipped_samples++;
+            // } else if (swapped < -32767) {
+            //     swapped = -32767;
+            //     clipped_samples++;
+            // }
             *output_buffer_ptr++ = swapped;
         }
         // if (clipped > 5) {
@@ -284,8 +260,8 @@ static void background_tasks(void) {
         //     //     printf("Peak: %d  agc_div: %d\n", current_peak / agc_div,
         //     //     agc_div);
         // }
-        afsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
-        agc_div = agc_run(current_peak);
+        bpsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
+        // agc_div = agc_run(current_peak);
 #endif
 
         // unsigned int i;
@@ -323,7 +299,7 @@ int main(void) {
 
     usb_init();
     tusb_init();
-    afsk_init(&nus_cfg);
+    bpsk_init();
 
     spi_init();
 
@@ -359,7 +335,7 @@ int main(void) {
 
     uint32_t usb_irqs = 0;
     uint32_t last_i2s_irqs = i2s_irqs;
-    uint32_t last_i2s_runs = 0;
+    // uint32_t last_i2s_runs = 0;
     while (1) {
         background_tasks();
         usb_irqs++;
@@ -369,21 +345,21 @@ int main(void) {
             last_i2s_irqs = i2s_irqs;
             usb_irqs = 0;
         }
-        if (((i2s_runs & 127) == 0) && (i2s_runs != last_i2s_runs)) {
-            // printf("div: %d  tar: %5.0f  red: %f  ", agc_div, agc_target,
-            //        agc_decrease);
-            // tud_cdc_n_write_flush(0);
-            // printf("inc: %f  off: %f\n", agc_increase, agc_offset);
-            // last_i2s_runs = i2s_runs;
-            // tud_cdc_n_write_flush(0);
-            printf("div: %d  tar: %5.0f  dec: %f  "
-                   "inc: %f  off: %f  clip: %d  peak: %d  real: %d\n",
-                   agc_div, agc_target, agc_decrease, agc_increase,
-                   agc_offset, clipped_samples, current_peak, current_peak / agc_div);
-            last_i2s_runs = i2s_runs;
-            clipped_samples = 0;
-            tud_cdc_n_write_flush(0);
-        }
+        // if (((i2s_runs & 127) == 0) && (i2s_runs != last_i2s_runs)) {
+        //     // printf("div: %d  tar: %5.0f  red: %f  ", agc_div, agc_target,
+        //     //        agc_decrease);
+        //     // tud_cdc_n_write_flush(0);
+        //     // printf("inc: %f  off: %f\n", agc_increase, agc_offset);
+        //     // last_i2s_runs = i2s_runs;
+        //     // tud_cdc_n_write_flush(0);
+        //     printf("div: %d  tar: %5.0f  dec: %f  "
+        //            "inc: %f  off: %f  clip: %d  peak: %d  real: %d\n",
+        //            _div, agc_target, agc_decrease, agc_increase,
+        //            agc_offset, clipped_samples, current_peak, current_peak / agc_div);
+        //     last_i2s_runs = i2s_runs;
+        //     clipped_samples = 0;
+        //     tud_cdc_n_write_flush(0);
+        // }
     }
 
     NVIC_SystemReset();

@@ -1,16 +1,17 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 
-#include "afsk.h"
+#include "bpsk.h"
 
 #include "bpsk/demod.h"
 #include "bpsk/mac.h"
 #include "bpsk/murmur3.h"
 
+#include "arm_math.h"
+
 #include "printf.h"
 
-static FSK_demod_const demod_table;
-static FSK_demod_state demod_state;
 static struct mac_state mac_state;
 static int packet_count = 0;
 static int corrupt_count = 0;
@@ -102,20 +103,16 @@ static int validate_packet(demod_pkt_t *pkt, int should_print) {
     return 1;
 }
 
-void afsk_init(const struct demod_config *cfg) {
-
-    memset(&mac_state, 0, sizeof(mac_state));
-    fsk_demod_generate_table(&demod_table, cfg->baud_rate, cfg->sample_rate,
-                             cfg->f_lo, cfg->f_hi, cfg->filter_width, 1);
-    fsk_demod_init(&demod_table, &demod_state);
+void bpsk_init(void) {
+    bpsk_demod_init();
 }
 
-void afsk_run(int16_t *samples, size_t nsamples) {
+void bpsk_run(int16_t *samples, size_t nsamples) {
     size_t processed_samples;
 
     int bit = 0;
     while (nsamples > 0) {
-        if (fsk_demod(&demod_table, &demod_state, &bit, samples, nsamples, &processed_samples)) {
+        if (bpsk_demod(&bit, samples, nsamples, &processed_samples)) {
             if (mac_put_bit(&mac_state, bit, &packet, sizeof(packet))) {
                 if (validate_packet(&packet, 1)) {
                     packet_count++;

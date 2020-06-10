@@ -13,38 +13,92 @@
 #include <stdio.h>
 #endif
 
-#define CAPTURE_BUFFER
+#include "fir_coefficients.h"
+#include "lpf_coefficients.h"
 
-static int32_t FSK_core(demod_sample_t *b, const FSK_demod_const *table) {
-    uint32_t j;
-    int32_t corrs[4] = {0, 0, 0, 0};
-    int32_t sum = 0;
+struct nco_state {
+    float32_t samplerate; // Hz
+    float32_t freq;       // Hz
 
-    for (j = 0; j < table->filter_size; j++) {
-        corrs[0] += b[j] * table->filter_hi_i[j];
-        corrs[1] += b[j] * table->filter_hi_q[j];
-        corrs[2] += b[j] * table->filter_lo_i[j];
-        corrs[3] += b[j] * table->filter_lo_q[j];
-    }
+    float32_t phase; // rad
+};
 
-    corrs[0] >>= COS_BITS;
-    corrs[1] >>= COS_BITS;
-    corrs[2] >>= COS_BITS;
-    corrs[3] >>= COS_BITS;
+struct bpsk_state {
+    /// Convert incoming q15 values into f32 values into this
+    /// buffer, so that we can keep track of it between calls.
+    float32_t current[SAMPLES_PER_PERIOD];
+    uint32_t current_offset;
 
-    // printf("\n");
-    // printf("hi_i: %d\n", corrs[0]);
-    // printf("hi_q: %d\n", corrs[1]);
-    // printf("lo_i: %d\n", corrs[2]);
-    // printf("lo_q: %d\n", corrs[3]);
+    /// If there aren't enough samples to convert data from q15
+    /// to f32, store them in here and return.
+    demod_sample_t cached[SAMPLES_PER_PERIOD];
+    uint32_t cached_capacity;
 
-    // This should use saturating operations!
-    sum += (corrs[0] * corrs[0]);
-    sum -= (corrs[2] * corrs[2]);
-    sum += (corrs[1] * corrs[1]);
-    sum -= (corrs[3] * corrs[3]);
+    arm_fir_instance_f32 fir;
+    float32_t fir_state[SAMPLES_PER_PERIOD + FIR_STAGES - 1];
 
-    return sum;
+    struct nco_state nco;
+    float32_t nco_error;
+
+    arm_fir_instance_f32 i_lpf;
+    float32_t i_lpf_state[SAMPLES_PER_PERIOD + LPF_STAGES - 1];
+
+    arm_fir_instance_f32 q_lpf;
+    float32_t q_lpf_state[SAMPLES_PER_PERIOD + LPF_STAGES - 1];
+
+    float32_t agc;
+    float32_t agc_step;
+    float32_t agc_target_hi;
+    float32_t agc_target_low;
+};
+
+static struct bpsk_state bpsk_state;
+
+extern char varcode_to_char(uint32_t c);
+static void print_char(uint32_t c) {
+    printf("%c", varcode_to_char(c >> 2));
+}
+
+static void nco(float32_t control, uint32_t timestep, float32_t *i,
+                float32_t *q) {
+    // control is a number from +1 to -1, which translates to -pi to +pi
+    // additional phase per time step timestep is the current time step,
+    // expressed in terms of samples since t=0 i is a pointer to the in-phase
+    // return value q is a pointer to the quadrature return value
+
+    bpsk_state.nco.phase += (control / PI);
+
+    *i = arm_cos_f32((((float32_t)timestep) * bpsk_state.nco.freq * 2 * PI) /
+                         bpsk_state.nco.samplerate +
+                     bpsk_state.nco.phase);
+    *q = arm_sin_f32((((float32_t)timestep) * bpsk_state.nco.freq * 2 * PI) /
+                         bpsk_state.nco.samplerate +
+                     bpsk_state.nco.phase);
+}
+
+void bpsk_demod_init(void) {
+    arm_fir_init_f32(&bpsk_state.fir, FIR_STAGES, fir_coefficients,
+                     bpsk_state.fir_state, SAMPLES_PER_PERIOD);
+
+    bpsk_state.nco.samplerate = SAMPLE_RATE;
+    bpsk_state.nco.freq = CARRIER_TONE;
+    bpsk_state.nco.phase = 0.0;
+    bpsk_state.nco_error = 0.0;
+
+    bpsk_state.agc = 1.0;
+    bpsk_state.agc_step = 0.05;
+    bpsk_state.agc_target_hi = 0.5;
+    bpsk_state.agc_target_low = 0.25;
+
+    // Force a buffer refill for the first iteration
+    bpsk_state.current_offset = SAMPLES_PER_PERIOD;
+
+    bpsk_state.cached_capacity = 0;
+
+    arm_fir_init_f32(&bpsk_state.i_lpf, LPF_STAGES, lpf_coefficients,
+                     bpsk_state.i_lpf_state, SAMPLES_PER_PERIOD);
+    arm_fir_init_f32(&bpsk_state.q_lpf, LPF_STAGES, lpf_coefficients,
+                     bpsk_state.q_lpf_state, SAMPLES_PER_PERIOD);
 }
 
 // Dump this with:
@@ -62,165 +116,146 @@ struct sample_wave sample_wave;
 uint32_t saved_samples_ptr;
 #endif
 
-int fsk_demod(const FSK_demod_const *table, FSK_demod_state *state, int *bit,
-              demod_sample_t *samples, size_t nb, size_t *ps) {
-    int new_sample;
-    int32_t sum;
-    demod_sample_t *b;
-    size_t processed_samples = 0;
+int bpsk_demod(int *bit, demod_sample_t *samples, size_t nb,
+               size_t *processed_samples) {
 
-    while (nb-- > 0) {
-        processed_samples++;
+    while (1) {
 
-#ifdef CAPTURE_BUFFER
-        /* add a new sample in the demodulation filter */
-        sample_wave.saved_samples[saved_samples_ptr++] = *samples;
-        if (saved_samples_ptr >= CAPTURE_BUFFER_COUNT) {
-            saved_samples_ptr = 0;
-        }
-#endif
+        // If we've run out of samples, fill the sample buffer
+        if (bpsk_state.current_offset >= SAMPLES_PER_PERIOD) {
+            bpsk_state.current_offset = 0;
 
-        state->filter_buf[state->buf_offset++] = *samples++ >> state->shift;
-
-        // Duplicate the top half of the table into the bottom half,
-        // and move the pointer back to the middle.
-        // When the pointer reaches the end, move the pointer back
-        // to the buffer start, which lies in the middle of the
-        // filter_buf array:
-        //
-        // Buffer start ----+
-        //                  v
-        // +----------------+----------------+
-        // | Copy           | Active buffer  |
-        // +----------------+----------------+
-        //          \______________/
-        //                 ^
-        //                 |
-        //      Example averaging window
-        //
-        // The core will operate on a sliding window into this buffer
-        // equal to half the size of the buffer.
-        if (state->buf_offset == table->filter_buf_size) {
-            memmove(state->filter_buf,
-                    state->filter_buf + table->filter_buf_size -
-                        table->filter_size,
-                    table->filter_size * sizeof(demod_sample_t));
-            state->buf_offset = table->filter_size;
-        }
-
-        // Define the start of the sliding window
-        b = state->filter_buf + state->buf_offset - table->filter_size;
-
-        // Perform the dot products on the window
-        sum = FSK_core(b, table);
-
-        // printf("sum=%0.3f\n", sum / 65536.0);
-        // If the resulting sum is > 0, then it's a `1`.  Otherwise, it's a `0`.
-        new_sample = sum > 0;
-
-        // The `baud_pll` runs from 0..1.  It should transition halfway
-        // through the phase.  Adjust the PLL by some small value in order to
-        // track variations in the transmitter and receiver clocks.
-        if (state->current_sample != new_sample) {
-            state->current_sample = new_sample;
-            int32_t nudge;
-            if (state->baud_pll <= 32768)
-                nudge = state->baud_pll_adj;
-            else
-                nudge = -(int32_t)state->baud_pll_adj;
-            // printf("Bit transition detected!  pll: %3.1f%% -> %3.1f%% Sum:
-            // %0.3f  Bit:"
-            //        "%d  Run: %d\n",
-            //        state->baud_pll * 100.0, (state->baud_pll + nudge) *
-            //        100.0, sum, new_sample, state->run_length);
-            state->baud_pll += nudge;
-            // if (run_length > 200) {
-            //     state->baud_pll = 0.5 - state->baud_pll_adj;
-            // }
-            state->transition_count++;
-        }
-
-        state->baud_pll += state->baud_incr;
-
-        // When the PLL exceeds 1, this bit time has finished and we need to
-        // move on to the next bit.
-        if (state->baud_pll >= 65536) {
-            state->baud_pll -= 65536;
-            // printf("Finished bit.  Transition count: %d  baud=%3.1f%%
-            // (%d)\n",
-            //        state->transition_count, state->baud_pll * 100.0,
-            //        state->current_sample);
-            // if (transition_count >= 2) {
-            // //     printf("Transition count was %d, so keeping previous bit
-            // of %d\n", transition_count, last_bit);
-            //     state->current_sample = last_bit;
-            // }
-            if (table->stuffing) {
-                if (state->skip_next_bit) {
-                    state->previous_sample = state->current_sample;
-                    state->skip_next_bit = 0;
-                    continue;
+            // If there's data in the cache buffer, use that as the source
+            // for data.
+            if (bpsk_state.cached_capacity > 0) {
+                // If there won't be enough data to process, so copy the
+                // remainder to the cache and return.
+                if (bpsk_state.cached_capacity + nb < SAMPLES_PER_PERIOD) {
+                    memcpy(bpsk_state.cached + bpsk_state.cached_capacity,
+                           samples, nb * sizeof(*(bpsk_state.cached)));
+                    bpsk_state.cached_capacity += nb;
+                    *processed_samples += nb;
+                    return 0;
                 }
-                *bit = (state->current_sample == state->previous_sample);
-                if (*bit) {
-                    state->run_length++;
-                    if (state->run_length >= 5) {
-                        state->skip_next_bit = 1;
-                        state->run_length = 0;
-                    }
-                } else {
-                    state->run_length = 0;
-                }
-                state->previous_sample = state->current_sample;
-                // printf("Finished bit: %d  (run_length: %d)\n", *bit, state->run_length);
-            } else {
-                *bit = state->current_sample;
-                state->transition_count = 0;
+
+                memcpy(bpsk_state.cached + bpsk_state.cached_capacity, samples,
+                       (SAMPLES_PER_PERIOD - bpsk_state.cached_capacity) *
+                           sizeof(*(bpsk_state.cached)));
+
+                // There is enough data, so convert it to f32
+                arm_q15_to_float(bpsk_state.cached, bpsk_state.current,
+                                 SAMPLES_PER_PERIOD);
+                nb -= (SAMPLES_PER_PERIOD - bpsk_state.cached_capacity);
+                samples += SAMPLES_PER_PERIOD - bpsk_state.cached_capacity;
+                *processed_samples += SAMPLES_PER_PERIOD;
+                bpsk_state.cached_capacity = 0;
             }
-            *ps = processed_samples;
-            return 1;
-        }
-    }
-    *ps = processed_samples;
-    return 0;
-}
+            // Otherwise, the cache is empty, so operate directly on sample data
+            else {
+                // If there isn't enough data to operate on, store it in the
+                // cache.
+                if (nb < SAMPLES_PER_PERIOD) {
+                    memcpy(bpsk_state.cached + bpsk_state.cached_capacity,
+                           samples, nb * sizeof(*(bpsk_state.cached)));
+                    bpsk_state.cached_capacity = nb;
+                    *processed_samples += nb;
+                    return 0;
+                }
 
-void fsk_demod_init(const FSK_demod_const *table, FSK_demod_state *state) {
-    int32_t a;
+                arm_q15_to_float(samples, bpsk_state.current,
+                                 SAMPLES_PER_PERIOD);
+                nb -= SAMPLES_PER_PERIOD;
+                samples += SAMPLES_PER_PERIOD;
+                *processed_samples += SAMPLES_PER_PERIOD;
+            }
+        }
 
 #ifdef CAPTURE_BUFFER
-    uint8_t wave_header[] = {
-        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x01, 0x00, 0x57, 0x41, 0x56,
-        0x45, 0x66, 0x6d, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00,
-        0x01, 0x00, 0x24, 0xf4, 0x00, 0x00, 0x48, 0xe8, 0x01, 0x00, 0x02,
-        0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x01, 0x00,
-    };
-    memcpy(sample_wave.header, wave_header, sizeof(wave_header));
-    memset(sample_wave.saved_samples, 0, sizeof(sample_wave.saved_samples));
-    saved_samples_ptr = 0;
+#error "Unimplemented"
 #endif
 
-    state->baud_incr = table->baud_rate * 65536 / table->sample_rate;
-    state->baud_pll = 0;
-    state->baud_pll_adj = state->baud_incr / 4;
+        // Perform an initial FIR filter on the samples. This creates a LPF.
+        // This line may be omitted for testing.
+        arm_fir_f32(&bpsk_state.fir, bpsk_state.current, bpsk_state.current,
+                    SAMPLES_PER_PERIOD);
 
-    assert(table->filter_buf_size < FSK_FILTER_BUF_MAX);
-    memset(state->filter_buf, 0,
-           table->filter_buf_size * sizeof(demod_sample_t));
-    state->buf_offset = table->filter_size;
-    state->current_sample = 0;
-    state->previous_sample = 0;
+        float32_t loopwindow[SAMPLES_PER_PERIOD];
+        memcpy(loopwindow, bpsk_state.current, sizeof(bpsk_state.current));
 
-    state->shift = -2;
-    a = table->filter_size;
-    while (a != 0) {
-        state->shift++;
-        a /= 2;
+        // scan for agc value. note q15_to_float normalizes an int16_t to
+        // +1.0/-1.0.
+        int above_hi = 0;
+        int above_low = 0;
+        for (int i = 0; i < SAMPLES_PER_PERIOD; i++) {
+            loopwindow[i] = loopwindow[i] * bpsk_state.agc; // compute the agc
+
+            // then check if we're out of bounds
+            if (loopwindow[i] > bpsk_state.agc_target_low) {
+                above_low = 1;
+            }
+            if (loopwindow[i] > bpsk_state.agc_target_hi) {
+                above_hi = 1;
+            }
+        }
+        if (above_hi) {
+            bpsk_state.agc = bpsk_state.agc * (1.0 - bpsk_state.agc_step);
+        } else if (!above_low) {
+            bpsk_state.agc = bpsk_state.agc * (1.0 + bpsk_state.agc_step);
+        }
+
+        float32_t i_samps[SAMPLES_PER_PERIOD];
+        float32_t q_samps[SAMPLES_PER_PERIOD];
+        for (int i = 0; i < SAMPLES_PER_PERIOD; i++) {
+            nco(bpsk_state.nco_error, (uint32_t)i, &(i_samps[i]),
+                &(q_samps[i]));
+        }
+
+        static float32_t i_mult_samps[SAMPLES_PER_PERIOD];
+        static float32_t q_mult_samps[SAMPLES_PER_PERIOD];
+        arm_mult_f32(loopwindow, i_samps, i_mult_samps, SAMPLES_PER_PERIOD);
+        arm_mult_f32(loopwindow, q_samps, q_mult_samps, SAMPLES_PER_PERIOD);
+
+        static float32_t i_lpf_samples[SAMPLES_PER_PERIOD];
+        static float32_t q_lpf_samples[SAMPLES_PER_PERIOD];
+        arm_fir_f32(&bpsk_state.i_lpf, i_mult_samps, i_lpf_samples, SAMPLES_PER_PERIOD);
+        arm_fir_f32(&bpsk_state.q_lpf, q_mult_samps, q_lpf_samples, SAMPLES_PER_PERIOD);
+
+        // arm_float_to_q15(i_lpf_samples, &(i_loop[sample_offset]),
+        //                  SAMPLES_PER_PERIOD);
+        // arm_float_to_q15(q_lpf_samples, &(q_loop[sample_offset]),
+        //                  SAMPLES_PER_PERIOD);
+
+        float32_t errorwindow[SAMPLES_PER_PERIOD];
+        arm_mult_f32(i_lpf_samples, q_lpf_samples, errorwindow,
+                     SAMPLES_PER_PERIOD);
+        float32_t avg = 0;
+        for (int i = 0; i < SAMPLES_PER_PERIOD; i++) {
+            avg += errorwindow[i];
+        }
+        avg /= ((float32_t)SAMPLES_PER_PERIOD);
+        bpsk_state.nco_error = -(avg);
+        // printf("err: %0.04f\n", nco_error);
+
+        static float bit_pll = 0;
+        static const float pll_incr = (BAUD_RATE / (float)SAMPLE_RATE);
+        for (unsigned int j = 0; j < SAMPLES_PER_PERIOD; j++) {
+            if (bit_pll < 0.5 && (bit_pll + pll_incr) >= 0.5) {
+                static int bit_acc = 0;
+                static int last_state = 0;
+                int state = i_lpf_samples[j] > 0.0;
+                *bit = !(state ^ last_state);
+                last_state = state;
+
+                bit_acc = (bit_acc << 1) | *bit;
+                if ((bit_acc & 3) == 0) {
+                    print_char(bit_acc);
+                    bit_acc = 0;
+                }
+            }
+            bit_pll += pll_incr;
+            if (bit_pll >= 1) {
+                bit_pll -= 1;
+            }
+        }
     }
-
-    state->run_length = 0;
-    state->transition_count = 0;
-    state->skip_next_bit = 0;
-    // state->last_bit = 0;
-    // printf("shift=%d\n", state->shift);
 }
