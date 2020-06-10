@@ -49,6 +49,40 @@
 
 #include "printf.h"
 
+#define SAMPLE_RATE 62500
+#define CARRIER_TONE 20840
+#define BAUD_RATE (651.0f) // 31.25
+#define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
+extern const char *char_to_varcode(char c);
+
+#define TEST_STRING "Four score and seven years ago, our fathers brought forth on this continent a new nation: conceived in liberty, and dedicated to the proposition that all men are created equal."
+
+struct modulate_cfg {
+  uint32_t rate;
+  uint32_t carrier;
+  float baud;
+  float pll_incr;
+  void (*write)(void *arg, void *data, unsigned int count);
+  void *write_arg;
+  float omega;
+  const char *string;
+};
+
+struct modulate_state {
+  struct modulate_cfg cfg;
+  float bit_pll;
+  float baud_pll;
+  int polarity;
+  int str_pos;
+  int varcode_pos;
+  char varcode_str[16];
+  int bitcount;
+  int16_t high;
+  int16_t low;
+};
+
+struct modulate_state mod_instance;
+
 #define BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS 0x0007E000
 // This must match the value in `nrf52833_s140_v7.ld`
 #define BOOTLOADER_REGION_START                                                \
@@ -120,174 +154,174 @@ volatile float agc_min = 10;
 volatile float agc_reduce_threshold = 300;
 uint32_t clipped_samples;
 
-// volatile int32_t agc_div;
-// static int32_t agc_run(int32_t current_peak) {
-//     if (current_peak > agc_offset) {
-//         agc_offset *= agc_increase;
-//     } else if ((current_peak < agc_offset - agc_reduce_threshold) &&
-//                agc_offset > agc_min) {
-//         agc_offset *= agc_decrease;
-//     }
+void modulate_init(struct modulate_state *state, uint32_t carrier,
+                   uint32_t rate, float baud,
+                   void (*write)(void *arg, void *data, unsigned int count),
+                   void *arg, const char *str) {
+    state->cfg.rate = rate;
+    state->cfg.carrier = carrier;
+    state->cfg.baud = baud;
+    state->cfg.pll_incr = (float)carrier / (float)rate;
+    state->cfg.write = write;
+    state->cfg.write_arg = arg;
+    state->cfg.omega = (2.0 * M_PI * carrier) / rate;
+    state->bit_pll = 0.0;
+    state->baud_pll = 0.0;
+    state->polarity = 0;
+    state->cfg.string = str;
+    state->str_pos = 0;
+    state->varcode_pos = -1;
+    state->varcode_str[0] = '\0';
+    state->bitcount = -1;
+    state->high = 32767/4;
+    state->low = -32768/4;
+    return;
+}
 
-//     // Target the audio to be +/- 16384 (this value / 2)
-//     agc_div = (agc_offset / agc_target);
-//     if (agc_div < 1) {
-//         agc_div = 1;
-//     }
-//     // Set it to some default value if it's gotten out of range
-//     if (!isnormal(agc_offset)) {
-//         agc_offset = 100000;
-//     }
-//     return agc_div;
-// }
+static void send_bit(struct modulate_state *state, int bit) {
+    state->low = -32768/4;
+    state->high = 32767/4;
+
+    state->polarity ^= !bit;
+    if (state->polarity) {
+        state->low = 32767/4;
+        state->high = -32768/4;
+    }
+
+    int bit_count = 0;
+
+    while (bit_count < 32) {
+        if (state->baud_pll > 0.5) {
+            // printf("writing high %d: @ %p ", high, &high);
+	  state->cfg.write(state->cfg.write_arg, &(state->high), sizeof(state->high));
+        } else {
+            // printf("writing low %d: @ %p ", low, &low);
+	  state->cfg.write(state->cfg.write_arg, &(state->low), sizeof(state->low));
+        }
+        state->baud_pll += state->cfg.pll_incr;
+        if (state->baud_pll > 1.0) {
+            bit_count++;
+            state->baud_pll -= 1.0;
+        }
+    }
+}
+
+static void loop_bit(struct modulate_state *state) {
+
+    if (state->bitcount < 32) {
+        if (state->baud_pll > 0.5) {
+            // printf("writing high %d: @ %p ", high, &high);
+            state->cfg.write(state->cfg.write_arg, &state->high, sizeof(state->high));
+        } else {
+            // printf("writing low %d: @ %p ", low, &low);
+            state->cfg.write(state->cfg.write_arg, &state->low, sizeof(state->low));
+        }
+        state->baud_pll += state->cfg.pll_incr;
+        if (state->baud_pll > 1.0) {
+            state->bitcount++;
+            state->baud_pll -= 1.0;
+        }
+    } else {
+      state->bitcount = -1;
+    }
+}
+
+static void set_bit(struct modulate_state *state, int bit) {
+    state->low = -32768/4;
+    state->high = 32767/4;
+
+    state->polarity ^= !bit;
+    if (state->polarity) {
+        state->low = 32767/4;
+        state->high = -32768/4;
+    }
+
+    state->bitcount = 0;
+    loop_bit(state);
+}
 
 
-uint32_t i2s_runs = 0;
-int32_t current_peak = 0;
+#define ZERO_RUN 8
+void modulate_loop(struct modulate_state *state) {
+    char c;
+
+    if( state->bitcount != -1 ) {
+      loop_bit(state);
+    } else {
+      if( state->str_pos < ZERO_RUN ) {
+	set_bit(state, 0);
+	state->str_pos++;
+      } else {
+	if(state->varcode_pos == -1) {
+	  c = state->cfg.string[state->str_pos-ZERO_RUN];
+	  //printf("%c", c);
+	  if(c != '\0') {
+	    strncpy(state->varcode_str, char_to_varcode(c), 16);
+	    state->varcode_pos = 0;
+	    state->str_pos++;
+	  } else {
+	    state->str_pos = 0;
+	    state->varcode_pos = -1;
+	    return;
+	  }
+	  set_bit(state, 0); // inserts extra zero on beginning, but second of two trailing 0's at end of a varcode
+	} else {
+	  int bit = 0;
+	  bit = state->varcode_str[state->varcode_pos];
+	  if( bit != '\0' ) {
+	    set_bit(state, bit != '0');
+	    state->varcode_pos++;
+	  } else {
+	    set_bit(state, 0); // first of two trailing 0 bits after a varcode
+	    state->varcode_pos = -1;
+	  }
+	}
+      }
+    }
+}
+
+
+void modulate_string(struct modulate_state *state, const char *string) {
+    char c;
+
+    printf("Sending: ");
+    for (unsigned int i = 0; i < 8; i++) {
+        send_bit(state, 0);
+    }
+
+    while ((c = *string++) != '\0') {
+        const char *bit_pattern = char_to_varcode(c);
+
+        int bit = 0;
+        while ((bit = *bit_pattern++) != '\0') {
+            send_bit(state, bit != '0');
+        }
+        send_bit(state, 0);
+        send_bit(state, 0);
+    }
+    printf("\n");
+}
+
+extern uint32_t samplecount;
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
     cdc_task();
 
-    if (i2s_ready) {
-        i2s_ready = false;
-        i2s_runs++;
-
-        const size_t samples_per_loop =
-            RECORD_BUFFER_SIZE / 2 / sizeof(int32_t) / 2;
-
-        // Cast to 32-bit int pointer, since we need to swap the values.
-        uint32_t *input_buffer = (uint32_t *)i2s_buffer;
-
-        // Current peak value in this buffer. Always a positive value.
-        current_peak = 0;
-        unsigned int i;
-
-        // if ((i2s_runs & 0xff) == 0) {
-        //     printf("Processed %d loops of I2S\n", i2s_runs);
-        // }
-
-#if defined(RECORD_TEST_16)
-        static int16_t *output_buffer_ptr = &data_buffer[0];
-        // Every other 32-bit word in `input_buffer` is 0, so skip over it.
-        // Additionally, we're only interested in one half of the record
-        // buffer, since the other half is being written to.
-        for (i = 0; i < samples_per_loop; i++) {
-            uint32_t unswapped = input_buffer[i * 2];
-            int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
-                                         ((unswapped << 16) & 0xffff0000)));
-            if (swapped > current_peak) {
-                current_peak = swapped;
-            }
-
-            swapped = swapped / agc_div;
-            *output_buffer_ptr++ = swapped;
-
-            // Advance the output buffer pointer, wrapping when it reaches the
-            // end.
-            if (output_buffer_ptr >= &data_buffer[DATA_BUFFER_ELEMENT_COUNT])
-                output_buffer_ptr = &data_buffer[0];
-        }
-
-        // Advance the master pointer to the output buffer, which we will use
-        // in the next iteration of this loop.
-        if (data_buffer_offset >= sizeof(data_buffer) / sizeof(*data_buffer)) {
-            data_buffer_offset = 0;
-        }
-
-        if (current_peak > agc_peak) {
-            agc_peak += 1024;
-        } else if ((current_peak < agc_peak - 1024) && agc_peak > 256) {
-            agc_peak -= 256;
-        }
-        // Target the audio to be +/- 16384 (this value / 2)
-        agc_div = (agc_peak / 8192);
-        if (agc_div < 1) {
-            agc_div = 1;
-        };
-
-        static int loops = 0;
-        loops++;
-        if ((loops & 31) == 0) {
-            printf("agc_div: %d  agc_peak: %d  current_peak: %d\n", agc_div,
-                   agc_peak, current_peak);
-        }
-#elif defined(RECORD_TEST_32)
-        // Used for sampling during development. Read out the buffer with:
-        // ```
-        // (gdb) dump binary memory tone.raw data_buffer
-        // data_buffer+sizeof(data_buffer)
-        // ```
-        unsigned int i;
-        uint32_t *output_buffer = (uint32_t *)&data_buffer[data_buffer_offset];
-        uint32_t *input_buffer = (uint32_t *)i2s_buffer;
-        for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint32_t); i += 2) {
-            uint32_t words = input_buffer[i];
-            output_buffer[i / 2] =
-                (((words >> 16) & 0xffff) | ((words << 16) & 0xffff0000)) << 8;
-        }
-        data_buffer_offset += RECORD_BUFFER_SIZE / 4;
-        if (data_buffer_offset >= sizeof(data_buffer)) {
-            data_buffer_offset = 0;
-        }
-#else
-        // Every other 32-bit word in `input_buffer` is 0, so skip over it.
-        // Additionally, we're only interested in one half of the record
-        // buffer, since the other half is being written to.
-        int16_t output_buffer[samples_per_loop];
-        int16_t *output_buffer_ptr = output_buffer;
-        // uint32_t clipped = 0;
-        for (i = 0; i < samples_per_loop; i++) {
-            uint32_t unswapped = input_buffer[i * 2];
-            int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
-                                         ((unswapped << 16) & 0xffff0000)));
-
-            // // Add samples that are greater than 0 to an AGC mask. We'll
-            // // determine how many leading zeroes there are to calculate how many
-            // // bits to shift by during the next run.
-            // if (swapped > current_peak) {
-            //     current_peak = swapped;
-            // }
-
-            // swapped = swapped / agc_div;
-            // if (swapped > 32767) {
-            //     swapped = 32767;
-            //     clipped_samples++;
-            // } else if (swapped < -32767) {
-            //     swapped = -32767;
-            //     clipped_samples++;
-            // }
-            *output_buffer_ptr++ = swapped;
-        }
-        // if (clipped > 5) {
-        //     printf("Clipped %d samples\n", clipped);
-        //     // } else {
-        //     //     printf("Peak: %d  agc_div: %d\n", current_peak / agc_div,
-        //     //     agc_div);
-        // }
-        bpsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
-        // agc_div = agc_run(current_peak);
-#endif
-
-        // unsigned int i;
-        // uint16_t *output_buffer = (uint16_t
-        // *)&data_buffer[data_buffer_offset]; uint16_t *input_buffer =
-        // (uint16_t *)i2s_buffer; for (i = 0; i < RECORD_BUFFER_SIZE / 2 /
-        // sizeof(uint16_t); i+=2) {
-        //     output_buffer[i/2] = input_buffer[i];
-        // }
-        // data_buffer_offset += RECORD_BUFFER_SIZE / 4;
-
-        // memcpy(&data_buffer[data_buffer_offset], (void *)i2s_buffer,
-        //        RECORD_BUFFER_SIZE / 2);
-        // data_buffer_offset += RECORD_BUFFER_SIZE / 2;
-
-        // if (data_buffer_offset >= sizeof(data_buffer)) {
-        //     data_buffer_offset = 0;
-        // }
-        if (i2s_ready) {
-            printf("I2S UNDERRUN!!!\n");
-        }
+    if((samplecount % 62500) == 0) {
+      printf("%d\n", samplecount / 62500);
     }
+}
+
+extern uint32_t pwmstate;
+static void append_pwm(void *arg, void *data, unsigned int count) {
+    // printf("%p %p %ud\n", )
+    // printf("write %d count %u\n", ((int16_t *)data)[0], count);
+  
+    //fwrite(data, count, 1, arg);
+  if( *((int16_t *)data) > 0 )
+    pwmstate = 1;
+  else
+    pwmstate = 0;
 }
 
 int main(void) {
@@ -322,6 +356,10 @@ int main(void) {
 
     spi_deinit();
 
+    uint32_t rate = SAMPLE_RATE;
+    uint32_t tone = CARRIER_TONE; // rate / 3;
+    modulate_init(&mod_instance, tone, rate, 1.0 /* unimplemented */, append_pwm, NULL, TEST_STRING);
+    
     nus_init(&i2s_config, record_buffer, sizeof(record_buffer));
     nus_start();
 
@@ -336,7 +374,10 @@ int main(void) {
     }
 
     printf("SPI ID: %02x %02x %02x\n", id[0], id[1], id[2]);
-
+    printf("Hello world!\n");
+    printf("pwm0 inten: %x\n", NRF_PWM0->INTEN);
+    printf("pwm0 periodend: %x\n", NRF_PWM0->EVENTS_PWMPERIODEND);
+    
     uint32_t usb_irqs = 0;
     uint32_t last_i2s_irqs = i2s_irqs;
     // uint32_t last_i2s_runs = 0;

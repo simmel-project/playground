@@ -8,12 +8,15 @@
 #include "nrfx.h"
 #include "nrfx_i2s.h"
 #include "nrfx_pwm.h"
+#include "nrf_gpio.h"
 
 #include "i2s.h"
 
 static volatile uintptr_t buffers[2];
 static volatile size_t buffer_size;
 static volatile uint8_t buffer_num;
+uint32_t samplecount = 1;
+uint32_t pwmstate = 0;
 
 static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = { 32 };
 
@@ -58,11 +61,19 @@ void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     pwm->SEQ[0].CNT      = 4; // default mode is Individual --> count must be 4
     pwm->SEQ[0].REFRESH  = 0;
     pwm->SEQ[0].ENDDELAY = 0;
+
+    pwm->INTENSET = NRF_PWM_INT_PWMPERIODEND_MASK;  // PWMPERIODEND set
+    pwm->EVENTS_PWMPERIODEND = 0;
     
     pwm->ENABLE = 1;
     
     pwm->EVENTS_SEQEND[0] = 0;
-  
+
+    nrf_gpio_cfg_output(0+2);
+    nrf_gpio_cfg_output(0+19);
+    nrf_gpio_pin_set(0+2);
+    nrf_gpio_pin_clear(0+19);
+    
 }
 
 void nus_start(void) {
@@ -73,8 +84,11 @@ void nus_start(void) {
     NRF_I2S->TXD.PTR = 0xFFFFFFFF;
     NRF_I2S->RXTXD.MAXCNT = buffer_size / 4; // In units of 32-bit words
 
-    NVIC_SetPriority(I2S_IRQn, 2);
+    NVIC_SetPriority(I2S_IRQn, 3);
     NVIC_EnableIRQ(I2S_IRQn);
+
+    NVIC_SetPriority(PWM0_IRQn, 2);
+    NVIC_EnableIRQ(PWM0_IRQn);
 
     // Turn on the interrupt to the NVIC but not within the NVIC itself. This
     // will wake the CPU and keep it awake until it is serviced without
@@ -136,4 +150,25 @@ void I2S_IRQHandler(void) {
         i2s_buffer = (int16_t *)(buffers[next_buffer]);
         i2s_ready = true;
     }
+}
+
+extern struct modulate_state mod_instance;
+void modulate_loop(struct modulate_state *state);
+
+void PWM0_IRQHandler(void) {
+  if(NRF_PWM0->EVENTS_PWMPERIODEND) {
+    if(pwmstate) {
+      nrf_gpio_pin_set(0+2);
+      nrf_gpio_pin_clear(0+19);
+    } else {
+      nrf_gpio_pin_clear(0+2);
+      nrf_gpio_pin_set(0+19);
+    }
+    samplecount = samplecount + 1;
+
+    // compute next state in arrears, because the computation takes variable time
+    modulate_loop(&mod_instance);
+    
+    NRF_PWM0->EVENTS_PWMPERIODEND = 0;
+  }
 }
