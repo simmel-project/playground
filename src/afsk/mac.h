@@ -77,6 +77,7 @@ typedef union demod_packet demod_pkt_t;
 
 #define PKT_VER_1 0x01
 #define PKT_VER_2 0x02 /* Improved baud striping */
+#define PKT_VER_3 0x03 /* Stuffed bits and transition-is-0 */
 
 /// Internal state of the MAC
 typedef enum current_mac_state {

@@ -3,9 +3,15 @@
 #include <assert.h>
 
 #include "mac.h"
+#ifdef PLAYGROUND
 #include "../printf.h"
+#else
+#include <stdio.h>
+#endif
+
 
 extern uint32_t debug_print_sync;
+extern uint32_t debug_print_status;
 
 // uint8_t byte_log[65536];
 // uint8_t bit_offset = 8;
@@ -121,8 +127,11 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
 
             /* If the version number doesn't match, abandon ship. */
             if ((pkt->header.version != PKT_VER_1) &&
-                (pkt->header.version != PKT_VER_2)) {
-                printf("Unrecognized packet version: %d\n", pkt->header.version);
+                (pkt->header.version != PKT_VER_2) &&
+                (pkt->header.version != PKT_VER_3)) {
+                if (debug_print_status) {
+                    printf("Unrecognized packet version: %d\n", pkt->header.version);
+                }
                 goto make_idle;
             }
 
@@ -132,7 +141,7 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
                 state->pkt_len = DATA_LEN;
             else {
                 /* Unrecognized packet type */
-                if (debug_print_sync)
+                if (debug_print_status)
                     printf("Unrecognized packet header type %d\n",
                            pkt->header.type);
                 goto make_idle;
@@ -156,7 +165,6 @@ int mac_put_bit(struct mac_state *state, int bit, void *buffer,
         /* If we've finished reading the packet, indicate it's ready */
         if (state->pkt_len && state->pkt_read >= state->pkt_len) {
             packet_done = 1; // flag that the packet is ready
-            printf("Received packet\n");
             goto make_idle;
             break;
         }

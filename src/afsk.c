@@ -16,7 +16,8 @@ static int packet_count = 0;
 static int corrupt_count = 0;
 static demod_pkt_t packet;
 
-uint32_t debug_print_sync = 1;
+volatile uint32_t debug_print_sync = 1;
+volatile uint32_t debug_print_status = 1;
 
 static int validate_packet(demod_pkt_t *pkt, int should_print) {
     unsigned int i;
@@ -73,6 +74,8 @@ static int validate_packet(demod_pkt_t *pkt, int should_print) {
                     ((uint8_t *)pkt)[i] ^= 0xac;
                 else if ((i % 3) == 2)
                     ((uint8_t *)pkt)[i] ^= 0x95;
+            } else if (pkt->header.version == PKT_VER_3) {
+                // Nothing to do
             }
         }
 
@@ -103,7 +106,7 @@ void afsk_init(const struct demod_config *cfg) {
 
     memset(&mac_state, 0, sizeof(mac_state));
     fsk_demod_generate_table(&demod_table, cfg->baud_rate, cfg->sample_rate,
-                             cfg->f_lo, cfg->f_hi, cfg->filter_width);
+                             cfg->f_lo, cfg->f_hi, cfg->filter_width, 1);
     fsk_demod_init(&demod_table, &demod_state);
 }
 

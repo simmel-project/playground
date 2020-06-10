@@ -18,7 +18,7 @@
 
 void fsk_demod_generate_table(FSK_demod_const *fsk_table, uint32_t baud_rate,
                               uint32_t sample_rate, uint32_t f_lo,
-                              uint32_t f_hi, uint32_t fsk_filter_size) {
+                              uint32_t f_hi, uint32_t fsk_filter_size, uint8_t stuffing) {
     float phase;
     uint32_t i;
 
@@ -29,6 +29,7 @@ void fsk_demod_generate_table(FSK_demod_const *fsk_table, uint32_t baud_rate,
     fsk_table->sample_rate = sample_rate;
     fsk_table->filter_buf_size = fsk_filter_size * 2;
     fsk_table->filter_size = fsk_filter_size;
+    fsk_table->stuffing = stuffing;
 
     /* compute the filters */
     for (i = 0; i < fsk_table->filter_size; i++) {

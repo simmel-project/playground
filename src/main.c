@@ -25,6 +25,7 @@
 // #define RECORD_TEST_16
 // #define RECORD_TEST_32
 
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -51,14 +52,15 @@
 static const struct demod_config nus_cfg = {
     .sample_rate = 62500,
 
-    // .baud_rate = 3564,
-    // .f_lo = 10134,
-    // .f_hi = 17097,
-    // .filter_width = 9,
 
-    .baud_rate = 4784,
-    .f_lo = 6017,
-    .f_hi = 11452,
+    // .baud_rate = 6615,
+    // .f_lo = 19476,
+    // .f_hi = 25799,
+    // .filter_width = 8,
+
+    .baud_rate = 4315,
+    .f_lo =  9291,
+    .f_hi = 13701,
     .filter_width = 8,
 
     // .baud_rate = 8000,
@@ -105,7 +107,7 @@ __attribute__((used)) uint8_t id[3];
 #if defined(RECORD_TEST_16) || defined(RECORD_TEST_32)
 #define RECORD_BUFFER_SIZE 1024
 #else
-#define RECORD_BUFFER_SIZE 2048
+#define RECORD_BUFFER_SIZE 4096
 #endif
 __attribute__((used, aligned(4))) int8_t record_buffer[RECORD_BUFFER_SIZE];
 
@@ -130,30 +132,49 @@ static int16_t data_buffer[DATA_BUFFER_ELEMENT_COUNT];
 static uint32_t data_buffer_offset;
 #endif
 
+volatile float agc_offset = 100000;
+volatile float agc_increase = 1.01;
+volatile float agc_decrease = 0.99995;
+volatile float agc_target = 50000.0;
+volatile float agc_min = 10;
+volatile float agc_reduce_threshold = 300;
+uint32_t clipped_samples;
 
-float agc_offset = 10;
-int32_t agc_div;
+volatile int32_t agc_div;
 static int32_t agc_run(int32_t current_peak) {
     if (current_peak > agc_offset) {
-        agc_offset *= 1.01;
-    } else if ((current_peak < agc_offset - 400) && agc_offset > 101) {
-        agc_offset *= 0.9995;
+        agc_offset *= agc_increase;
+    } else if ((current_peak < agc_offset - agc_reduce_threshold) &&
+               agc_offset > agc_min) {
+        agc_offset *= agc_decrease;
     }
 
     // Target the audio to be +/- 16384 (this value / 2)
-    agc_div = (agc_offset / 24000.0);
+    agc_div = (agc_offset / agc_target);
     if (agc_div < 1) {
         agc_div = 1;
+    }
+    // Set it to some default value if it's gotten out of range
+    if (!isnormal(agc_offset)) {
+        agc_offset = 100000;
     }
     return agc_div;
 }
 
+extern uint32_t saved_samples_ptr;
+
+uint32_t i2s_runs = 0;
+int32_t current_peak = 0;
 static void background_tasks(void) {
+    if (saved_samples_ptr > 32768) {
+        asm("bkpt #0");
+    }
     tud_task(); // tinyusb device task
     cdc_task();
 
     if (i2s_ready) {
         i2s_ready = false;
+        i2s_runs++;
 
         const size_t samples_per_loop =
             RECORD_BUFFER_SIZE / 2 / sizeof(int32_t) / 2;
@@ -162,7 +183,7 @@ static void background_tasks(void) {
         uint32_t *input_buffer = (uint32_t *)i2s_buffer;
 
         // Current peak value in this buffer. Always a positive value.
-        int32_t current_peak = 0;
+        current_peak = 0;
         unsigned int i;
 
 #if defined(RECORD_TEST_16)
@@ -234,7 +255,7 @@ static void background_tasks(void) {
         // buffer, since the other half is being written to.
         int16_t output_buffer[samples_per_loop];
         int16_t *output_buffer_ptr = output_buffer;
-        uint32_t clipped = 0;
+        // uint32_t clipped = 0;
         for (i = 0; i < samples_per_loop; i++) {
             uint32_t unswapped = input_buffer[i * 2];
             int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
@@ -248,14 +269,21 @@ static void background_tasks(void) {
             }
 
             swapped = swapped / agc_div;
-            if ((swapped > 32768) || (swapped < -32767)) {
-                clipped++;
+            if (swapped > 32767) {
+                swapped = 32767;
+                clipped_samples++;
+            } else if (swapped < -32767) {
+                swapped = -32767;
+                clipped_samples++;
             }
             *output_buffer_ptr++ = swapped;
         }
-        if (clipped > 5) {
-            printf("Clipped %d samples\n", clipped);
-        }
+        // if (clipped > 5) {
+        //     printf("Clipped %d samples\n", clipped);
+        //     // } else {
+        //     //     printf("Peak: %d  agc_div: %d\n", current_peak / agc_div,
+        //     //     agc_div);
+        // }
         afsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
         agc_div = agc_run(current_peak);
 #endif
@@ -331,6 +359,7 @@ int main(void) {
 
     uint32_t usb_irqs = 0;
     uint32_t last_i2s_irqs = i2s_irqs;
+    uint32_t last_i2s_runs = 0;
     while (1) {
         background_tasks();
         usb_irqs++;
@@ -340,6 +369,21 @@ int main(void) {
             last_i2s_irqs = i2s_irqs;
             usb_irqs = 0;
         }
+        if (((i2s_runs & 127) == 0) && (i2s_runs != last_i2s_runs)) {
+            // printf("div: %d  tar: %5.0f  red: %f  ", agc_div, agc_target,
+            //        agc_decrease);
+            // tud_cdc_n_write_flush(0);
+            // printf("inc: %f  off: %f\n", agc_increase, agc_offset);
+            // last_i2s_runs = i2s_runs;
+            // tud_cdc_n_write_flush(0);
+            printf("div: %d  tar: %5.0f  dec: %f  "
+                   "inc: %f  off: %f  clip: %d  peak: %d  real: %d\n",
+                   agc_div, agc_target, agc_decrease, agc_increase,
+                   agc_offset, clipped_samples, current_peak, current_peak / agc_div);
+            last_i2s_runs = i2s_runs;
+            clipped_samples = 0;
+            tud_cdc_n_write_flush(0);
+        }
     }
 
     NVIC_SystemReset();
@@ -347,10 +391,16 @@ int main(void) {
 
 // printf glue
 void _putchar(char character) {
+    int buffered = 1;
     if (character == '\n') {
         tud_cdc_n_write_char(0, '\r');
     }
-    while (tud_cdc_n_write_char(0, character) < 1) {
-        background_tasks();
+    if (buffered) {
+        while (tud_cdc_n_write_char(0, character) < 1) {
+            tud_cdc_n_write_flush(0);
+            background_tasks();
+        }
+    } else {
+        tud_cdc_n_write_char(0, character);
     }
 }

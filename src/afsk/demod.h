@@ -30,8 +30,15 @@ typedef struct {
     /// How much to nudge the PLL by when we encounter a bit transition
     uint32_t baud_pll_adj;
 
-    /// The last bit, 0 or 1
-    int last_sample;
+    /// The current sample, either 0 (F_LO) or 1 (F_HI)
+    int current_sample;
+
+    /// The previous sample, either 0 (F_LO) or 1 (F_HI)
+    int previous_sample;
+
+    /// If a bit is stuffed, we should skip the next bit, in which case
+    /// this value is set to `true`.
+    uint8_t skip_next_bit;
 
     int16_t shift;
     uint32_t run_length;
@@ -53,13 +60,17 @@ typedef struct {
 
     int32_t filter_hi_i[FSK_FILTER_MAX_SIZE];
     int32_t filter_hi_q[FSK_FILTER_MAX_SIZE];
+
+    // Set to `true` if the protocol supports stuffing
+    uint8_t stuffing;
 } FSK_demod_const;
 
 /// Generate filter table constants.  This only needs to be done
 /// once per set of parameters.
 void fsk_demod_generate_table(FSK_demod_const *fsk_table, uint32_t baud_rate,
                               uint32_t sample_rate, uint32_t f_lo,
-                              uint32_t f_hi, uint32_t gen_filter_tab);
+                              uint32_t f_hi, uint32_t gen_filter_tab,
+                              uint8_t stuffing);
 void fsk_demod_init(const FSK_demod_const *fsk_table,
                     FSK_demod_state *fsk_state);
 int fsk_demod(const FSK_demod_const *fsk_table, FSK_demod_state *fsk_state,
