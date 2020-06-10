@@ -168,6 +168,10 @@ void PWM0_IRQHandler(void) {
 
     // compute next state in arrears, because the computation takes variable time
     modulate_loop(&mod_instance);
+
+    if( (samplecount % (62500 * 5)) == 0 ) {
+      mod_instance.modulating = 1;
+    }
     
     NRF_PWM0->EVENTS_PWMPERIODEND = 0;
   }

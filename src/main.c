@@ -57,30 +57,6 @@ extern const char *char_to_varcode(char c);
 
 #define TEST_STRING "Four score and seven years ago, our fathers brought forth on this continent a new nation: conceived in liberty, and dedicated to the proposition that all men are created equal."
 
-struct modulate_cfg {
-  uint32_t rate;
-  uint32_t carrier;
-  float baud;
-  float pll_incr;
-  void (*write)(void *arg, void *data, unsigned int count);
-  void *write_arg;
-  float omega;
-  const char *string;
-};
-
-struct modulate_state {
-  struct modulate_cfg cfg;
-  float bit_pll;
-  float baud_pll;
-  int polarity;
-  int str_pos;
-  int varcode_pos;
-  char varcode_str[16];
-  int bitcount;
-  int16_t high;
-  int16_t low;
-};
-
 struct modulate_state mod_instance;
 
 #define BOOTLOADER_MBR_PARAMS_PAGE_ADDRESS 0x0007E000
@@ -175,6 +151,7 @@ void modulate_init(struct modulate_state *state, uint32_t carrier,
     state->bitcount = -1;
     state->high = 32767/4;
     state->low = -32768/4;
+    state->modulating = 1;
     return;
 }
 
@@ -245,6 +222,9 @@ static void set_bit(struct modulate_state *state, int bit) {
 void modulate_loop(struct modulate_state *state) {
     char c;
 
+    if(state->modulating != 1)
+      return;
+    
     if( state->bitcount != -1 ) {
       loop_bit(state);
     } else {
@@ -262,6 +242,7 @@ void modulate_loop(struct modulate_state *state) {
 	  } else {
 	    state->str_pos = 0;
 	    state->varcode_pos = -1;
+	    state->modulating = 0; // stop the loop
 	    return;
 	  }
 	  set_bit(state, 0); // inserts extra zero on beginning, but second of two trailing 0's at end of a varcode
