@@ -4,6 +4,6 @@
 #include <stdint.h>
 
 void bpsk_init(void);
-void bpsk_run(int16_t *samples, uint32_t nsamples);
+void bpsk_run(int32_t *samples, uint32_t nsamples);
 
 #endif /* __BPSK_H__ */

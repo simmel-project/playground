@@ -3,7 +3,7 @@
 
 #include "arm_math.h"
 
-typedef int16_t demod_sample_t;
+typedef int32_t demod_sample_t;
 struct bpsk_state;
 
 #define SAMPLE_RATE 62500

@@ -129,7 +129,7 @@ void bpsk_init(void)
     bpsk_demod_init();
 }
 
-void bpsk_run(int16_t *samples, uint32_t nsamples)
+void bpsk_run(int32_t *samples, uint32_t nsamples)
 {
     uint32_t processed_samples;
 

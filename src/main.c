@@ -102,48 +102,16 @@ volatile int16_t *i2s_buffer = NULL;
 volatile bool i2s_ready = false;
 
 #ifdef RECORD_TEST_32
-static uint8_t data_buffer[81920];
-static uint32_t data_buffer_offset;
+#define DATA_BUFFER_ELEMENT_COUNT (81920 / 4)
+static uint8_t data_buffer[DATA_BUFFER_ELEMENT_COUNT];
 #endif
 
 #ifdef RECORD_TEST_16
 #define DATA_BUFFER_ELEMENT_COUNT (81920 / 2)
 static int16_t data_buffer[DATA_BUFFER_ELEMENT_COUNT];
-static uint32_t data_buffer_offset;
 #endif
 
-volatile float agc_offset = 100000;
-volatile float agc_increase = 1.01;
-volatile float agc_decrease = 0.99995;
-volatile float agc_target = 50000.0;
-volatile float agc_min = 10;
-volatile float agc_reduce_threshold = 300;
-uint32_t clipped_samples;
-
-// volatile int32_t agc_div;
-// static int32_t agc_run(int32_t current_peak) {
-//     if (current_peak > agc_offset) {
-//         agc_offset *= agc_increase;
-//     } else if ((current_peak < agc_offset - agc_reduce_threshold) &&
-//                agc_offset > agc_min) {
-//         agc_offset *= agc_decrease;
-//     }
-
-//     // Target the audio to be +/- 16384 (this value / 2)
-//     agc_div = (agc_offset / agc_target);
-//     if (agc_div < 1) {
-//         agc_div = 1;
-//     }
-//     // Set it to some default value if it's gotten out of range
-//     if (!isnormal(agc_offset)) {
-//         agc_offset = 100000;
-//     }
-//     return agc_div;
-// }
-
-
 uint32_t i2s_runs = 0;
-int32_t current_peak = 0;
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
     cdc_task();
@@ -153,18 +121,11 @@ static void background_tasks(void) {
         i2s_runs++;
 
         const size_t samples_per_loop =
-            RECORD_BUFFER_SIZE / 2 / sizeof(int32_t) / 2;
+            RECORD_BUFFER_SIZE / 2 / sizeof(uint32_t) / 2;
 
         // Cast to 32-bit int pointer, since we need to swap the values.
         uint32_t *input_buffer = (uint32_t *)i2s_buffer;
-
-        // Current peak value in this buffer. Always a positive value.
-        current_peak = 0;
         unsigned int i;
-
-        // if ((i2s_runs & 0xff) == 0) {
-        //     printf("Processed %d loops of I2S\n", i2s_runs);
-        // }
 
 #if defined(RECORD_TEST_16)
         static int16_t *output_buffer_ptr = &data_buffer[0];
@@ -175,11 +136,6 @@ static void background_tasks(void) {
             uint32_t unswapped = input_buffer[i * 2];
             int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
                                          ((unswapped << 16) & 0xffff0000)));
-            if (swapped > current_peak) {
-                current_peak = swapped;
-            }
-
-            swapped = swapped / agc_div;
             *output_buffer_ptr++ = swapped;
 
             // Advance the output buffer pointer, wrapping when it reaches the
@@ -187,103 +143,39 @@ static void background_tasks(void) {
             if (output_buffer_ptr >= &data_buffer[DATA_BUFFER_ELEMENT_COUNT])
                 output_buffer_ptr = &data_buffer[0];
         }
-
-        // Advance the master pointer to the output buffer, which we will use
-        // in the next iteration of this loop.
-        if (data_buffer_offset >= sizeof(data_buffer) / sizeof(*data_buffer)) {
-            data_buffer_offset = 0;
-        }
-
-        if (current_peak > agc_peak) {
-            agc_peak += 1024;
-        } else if ((current_peak < agc_peak - 1024) && agc_peak > 256) {
-            agc_peak -= 256;
-        }
-        // Target the audio to be +/- 16384 (this value / 2)
-        agc_div = (agc_peak / 8192);
-        if (agc_div < 1) {
-            agc_div = 1;
-        };
-
-        static int loops = 0;
-        loops++;
-        if ((loops & 31) == 0) {
-            printf("agc_div: %d  agc_peak: %d  current_peak: %d\n", agc_div,
-                   agc_peak, current_peak);
-        }
 #elif defined(RECORD_TEST_32)
         // Used for sampling during development. Read out the buffer with:
         // ```
         // (gdb) dump binary memory tone.raw data_buffer
         // data_buffer+sizeof(data_buffer)
         // ```
-        unsigned int i;
-        uint32_t *output_buffer = (uint32_t *)&data_buffer[data_buffer_offset];
-        uint32_t *input_buffer = (uint32_t *)i2s_buffer;
-        for (i = 0; i < RECORD_BUFFER_SIZE / 2 / sizeof(uint32_t); i += 2) {
-            uint32_t words = input_buffer[i];
-            output_buffer[i / 2] =
-                (((words >> 16) & 0xffff) | ((words << 16) & 0xffff0000)) << 8;
-        }
-        data_buffer_offset += RECORD_BUFFER_SIZE / 4;
-        if (data_buffer_offset >= sizeof(data_buffer)) {
-            data_buffer_offset = 0;
+        static int32_t *output_buffer_ptr = (int32_t *)&data_buffer[0];
+        for (i = 0; i < samples_per_loop; i++) {
+            uint32_t unswapped = input_buffer[i * 2];
+            uint32_t neg_mask = (unswapped & (1 << 31)) ? 0xaa000055 : 0;
+            int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
+                                         ((unswapped << 16) & 0xffff0000)) |
+                                         neg_mask);
+            *output_buffer_ptr++ = swapped;
+            if (output_buffer_ptr >=
+                (int32_t *)&data_buffer[DATA_BUFFER_ELEMENT_COUNT])
+                output_buffer_ptr = (int32_t *)&data_buffer[0];
         }
 #else
         // Every other 32-bit word in `input_buffer` is 0, so skip over it.
         // Additionally, we're only interested in one half of the record
         // buffer, since the other half is being written to.
-        int16_t output_buffer[samples_per_loop];
-        int16_t *output_buffer_ptr = output_buffer;
-        // uint32_t clipped = 0;
+        int32_t output_buffer[samples_per_loop];
+        int32_t *output_buffer_ptr = output_buffer;
         for (i = 0; i < samples_per_loop; i++) {
             uint32_t unswapped = input_buffer[i * 2];
             int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
                                          ((unswapped << 16) & 0xffff0000)));
-
-            // // Add samples that are greater than 0 to an AGC mask. We'll
-            // // determine how many leading zeroes there are to calculate how many
-            // // bits to shift by during the next run.
-            // if (swapped > current_peak) {
-            //     current_peak = swapped;
-            // }
-
-            // swapped = swapped / agc_div;
-            // if (swapped > 32767) {
-            //     swapped = 32767;
-            //     clipped_samples++;
-            // } else if (swapped < -32767) {
-            //     swapped = -32767;
-            //     clipped_samples++;
-            // }
             *output_buffer_ptr++ = swapped;
         }
-        // if (clipped > 5) {
-        //     printf("Clipped %d samples\n", clipped);
-        //     // } else {
-        //     //     printf("Peak: %d  agc_div: %d\n", current_peak / agc_div,
-        //     //     agc_div);
-        // }
         bpsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
-        // agc_div = agc_run(current_peak);
 #endif
 
-        // unsigned int i;
-        // uint16_t *output_buffer = (uint16_t
-        // *)&data_buffer[data_buffer_offset]; uint16_t *input_buffer =
-        // (uint16_t *)i2s_buffer; for (i = 0; i < RECORD_BUFFER_SIZE / 2 /
-        // sizeof(uint16_t); i+=2) {
-        //     output_buffer[i/2] = input_buffer[i];
-        // }
-        // data_buffer_offset += RECORD_BUFFER_SIZE / 4;
-
-        // memcpy(&data_buffer[data_buffer_offset], (void *)i2s_buffer,
-        //        RECORD_BUFFER_SIZE / 2);
-        // data_buffer_offset += RECORD_BUFFER_SIZE / 2;
-
-        // if (data_buffer_offset >= sizeof(data_buffer)) {
-        //     data_buffer_offset = 0;
-        // }
         if (i2s_ready) {
             printf("I2S UNDERRUN!!!\n");
         }
@@ -359,7 +251,8 @@ int main(void) {
         //     printf("div: %d  tar: %5.0f  dec: %f  "
         //            "inc: %f  off: %f  clip: %d  peak: %d  real: %d\n",
         //            _div, agc_target, agc_decrease, agc_increase,
-        //            agc_offset, clipped_samples, current_peak, current_peak / agc_div);
+        //            agc_offset, clipped_samples, current_peak, current_peak /
+        //            agc_div);
         //     last_i2s_runs = i2s_runs;
         //     clipped_samples = 0;
         //     tud_cdc_n_write_flush(0);

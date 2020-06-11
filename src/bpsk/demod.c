@@ -18,8 +18,9 @@
 #include "fir_coefficients.h"
 #include "lpf_coefficients.h"
 
-struct nco_state
-{
+// #define CAPTURE_BUFFER
+
+struct nco_state {
     float32_t samplerate; // Hz
     float32_t freq;       // Hz
 
@@ -28,8 +29,21 @@ struct nco_state
     float32_t error;
 };
 
-struct bpsk_state
-{
+// Dump this with:
+// ```
+//  dump binary memory sample.wav &sample_wave ((uint32_t)&sample_wave)+sizeof(sample_wave)
+// ```
+#ifdef CAPTURE_BUFFER
+#define CAPTURE_BUFFER_COUNT (20000)
+struct sample_wave {
+    uint8_t header[44];
+    demod_sample_t saved_samples[CAPTURE_BUFFER_COUNT];
+};
+struct sample_wave sample_wave;
+uint32_t saved_samples_ptr;
+#endif
+
+struct bpsk_state {
     /// Convert incoming q15 values into f32 values into this
     /// buffer, so that we can keep track of it between calls.
     float32_t current[SAMPLES_PER_PERIOD];
@@ -68,21 +82,18 @@ struct bpsk_state
 static struct bpsk_state bpsk_state;
 
 extern char varcode_to_char(uint32_t c);
-static void print_char(uint32_t c)
-{
+static void print_char(uint32_t c) {
     printf("%c", varcode_to_char(c >> 2));
 }
 
-static void make_nco(float32_t *i, float32_t *q)
-{
+static void make_nco(float32_t *i, float32_t *q) {
     // control is a number from +1 to -1, which translates to -pi to +pi
     // additional phase per time step timestep is the current time step,
     // expressed in terms of samples since t=0 i is a pointer to the in-phase
     // return value q is a pointer to the quadrature return value
 
     float32_t timestep = bpsk_state.nco.offset;
-    while (timestep < SAMPLES_PER_PERIOD + bpsk_state.nco.offset)
-    {
+    while (timestep < SAMPLES_PER_PERIOD + bpsk_state.nco.offset) {
         bpsk_state.nco.phase += (bpsk_state.nco.error / PI);
         *i++ = arm_cos_f32((timestep * bpsk_state.nco.freq * 2 * PI) /
                                bpsk_state.nco.samplerate +
@@ -100,8 +111,7 @@ static void make_nco(float32_t *i, float32_t *q)
     bpsk_state.nco.offset = timestep;
 }
 
-void bpsk_demod_init(void)
-{
+void bpsk_demod_init(void) {
     arm_fir_init_f32(&bpsk_state.fir, FIR_STAGES, fir_coefficients,
                      bpsk_state.fir_state, SAMPLES_PER_PERIOD);
 
@@ -130,109 +140,42 @@ void bpsk_demod_init(void)
     bpsk_state.pll_incr = ((float)BAUD_RATE / (float)SAMPLE_RATE);
     bpsk_state.bit_acc = 0;
     bpsk_state.last_state = 0;
+
+#ifdef CAPTURE_BUFFER
+    const uint8_t wav_header[] = {
+        0x52, 0x49, 0x46, 0x46, // chunkId 'RIFF'
+        0x1c, 0x12, 0x05, 0x00, // Chunk size
+        0x57, 0x41, 0x56, 0x45, // 'WAVE'
+        0x66, 0x6d, 0x74, 0x20, // 'fmt '
+        0x10, 0x00, 0x00, 0x00, // Sub chunk 1 size (chunk is 16 bytes)
+        0x01, 0x00, // Audio format (1 = pcm)
+        0x01, 0x00, // Numer of channels (1 = mono)
+        0x11, 0x2b, 0x00, 0x00, // Sample rate
+        0x22, 0x56, 0x00, 0x00, // Byte rate
+        0x02, 0x00, // Block alignment
+        32, 0x00, // Bits per sample
+        0x64, 0x61, 0x74, 0x61, // 'data'
+        0xf8, 0x11, 0x05, 0x00, // chunk size
+    };
+    uint32_t rate = 62500;
+    memcpy(sample_wave.header, wav_header, sizeof(wav_header));
+    memcpy(&sample_wave.header[24], &rate, sizeof(rate));
+#endif
 }
 
-// Dump this with:
-// ```
-//  dump binary memory sample.wav &sample_wave
-//  ((uint32_t)&sample_wave)+sizeof(sample_wave)
-// ```
 #ifdef CAPTURE_BUFFER
-#define CAPTURE_BUFFER_COUNT (32768)
-struct sample_wave
-{
-    uint8_t header[44];
-    uint16_t saved_samples[CAPTURE_BUFFER_COUNT];
-};
-struct sample_wave sample_wave;
-uint32_t saved_samples_ptr;
+static void append_to_capture_buffer(demod_sample_t *samples) {
+    uint32_t sample_count = 0;
+    while (sample_count++ < SAMPLES_PER_PERIOD) {
+        sample_wave.saved_samples[saved_samples_ptr++] = *samples++;
+        if (saved_samples_ptr > CAPTURE_BUFFER_COUNT) {
+            saved_samples_ptr = 0;
+        }
+    }
+}
 #endif
 
-// static FILE *output = NULL;
-// static void write_wav_stereo(int16_t *left, int16_t *right, unsigned int len,
-//                              const char *name)
-// {
-//     if (!output)
-//     {
-//         static uint8_t wav_header[44] = {
-//             0x52,
-//             0x49,
-//             0x46,
-//             0x46,
-//             0x1c,
-//             0x12,
-//             0x05,
-//             0x00,
-//             0x57,
-//             0x41,
-//             0x56,
-//             0x45,
-//             0x66,
-//             0x6d,
-//             0x74,
-//             0x20,
-//             0x10,
-//             0x00,
-//             0x00,
-//             0x00,
-//             0x01,
-//             0x00,
-//             0x02, // stereo
-//             0x00,
-//             0x11,
-//             0x2b,
-//             0x00,
-//             0x00,
-//             0x22,
-//             0x56,
-//             0x00,
-//             0x00,
-//             0x02,
-//             0x00,
-//             0x10,
-//             0x00,
-//             0x64,
-//             0x61,
-//             0x74,
-//             0x61,
-//             0xf8,
-//             0x11,
-//             0x05,
-//             0x00,
-//         };
-
-//         output = fopen(name, "w+b");
-//         if (!output)
-//         {
-//             perror("unable to open filtered file");
-//             return;
-//         }
-//         if (fwrite(wav_header, sizeof(wav_header), 1, output) <= 0)
-//         {
-//             perror("error");
-//             fclose(output);
-//             return;
-//         }
-//     }
-//     for (unsigned int i = 0; i < len; i++)
-//     {
-//         if (fwrite(&(left[i]), 2, 1, output) != 1)
-//         {
-//             perror("error");
-//             fclose(output);
-//             return;
-//         }
-//         if (fwrite(&(right[i]), 2, 1, output) != 1)
-//         {
-//             perror("error");
-//             fclose(output);
-//             return;
-//         }
-//     }
-// }
-
-static void bpsk_core(void)
-{
+static void bpsk_core(void) {
     // Perform an initial FIR filter on the samples. This creates a LPF.
     // This line may be omitted for testing.
     arm_fir_f32(&bpsk_state.fir, bpsk_state.current, bpsk_state.current,
@@ -241,26 +184,21 @@ static void bpsk_core(void)
     // Scan for agc value. note values are normalized to +1.0/-1.0.
     int above_hi = 0;
     int above_low = 0;
-    for (int i = 0; i < SAMPLES_PER_PERIOD; i++)
-    {
-        bpsk_state.current[i] = bpsk_state.current[i] * bpsk_state.agc; // compute the agc
+    for (int i = 0; i < SAMPLES_PER_PERIOD; i++) {
+        bpsk_state.current[i] =
+            bpsk_state.current[i] * bpsk_state.agc; // compute the agc
 
         // then check if we're out of bounds
-        if (bpsk_state.current[i] > bpsk_state.agc_target_low)
-        {
+        if (bpsk_state.current[i] > bpsk_state.agc_target_low) {
             above_low = 1;
         }
-        if (bpsk_state.current[i] > bpsk_state.agc_target_hi)
-        {
+        if (bpsk_state.current[i] > bpsk_state.agc_target_hi) {
             above_hi = 1;
         }
     }
-    if (above_hi)
-    {
+    if (above_hi) {
         bpsk_state.agc = bpsk_state.agc * (1.0 - bpsk_state.agc_step);
-    }
-    else if (!above_low)
-    {
+    } else if (!above_low) {
         bpsk_state.agc = bpsk_state.agc * (1.0 + bpsk_state.agc_step);
     }
 
@@ -277,21 +215,23 @@ static void bpsk_core(void)
 
     // static float32_t bpsk_state.i_lpf_samples[SAMPLES_PER_PERIOD];
     static float32_t q_lpf_samples[SAMPLES_PER_PERIOD];
-    arm_fir_f32(&bpsk_state.i_lpf, i_mult_samps, bpsk_state.i_lpf_samples, SAMPLES_PER_PERIOD);
-    arm_fir_f32(&bpsk_state.q_lpf, q_mult_samps, q_lpf_samples, SAMPLES_PER_PERIOD);
+    arm_fir_f32(&bpsk_state.i_lpf, i_mult_samps, bpsk_state.i_lpf_samples,
+                SAMPLES_PER_PERIOD);
+    arm_fir_f32(&bpsk_state.q_lpf, q_mult_samps, q_lpf_samples,
+                SAMPLES_PER_PERIOD);
 
     // int16_t i_loop[SAMPLES_PER_PERIOD];
     // int16_t q_loop[SAMPLES_PER_PERIOD];
     // arm_float_to_q15(bpsk_state.i_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
     // arm_float_to_q15(q_lpf_samples, q_loop, SAMPLES_PER_PERIOD);
-    // write_wav_stereo(i_loop, q_loop, SAMPLES_PER_PERIOD, "quadrature_loop.wav");
+    // write_wav_stereo(i_loop, q_loop, SAMPLES_PER_PERIOD,
+    // "quadrature_loop.wav");
 
     float32_t errorwindow[SAMPLES_PER_PERIOD];
     arm_mult_f32(bpsk_state.i_lpf_samples, q_lpf_samples, errorwindow,
                  SAMPLES_PER_PERIOD);
     float32_t avg = 0;
-    for (int i = 0; i < SAMPLES_PER_PERIOD; i++)
-    {
+    for (int i = 0; i < SAMPLES_PER_PERIOD; i++) {
         avg += errorwindow[i];
     }
     avg /= ((float32_t)SAMPLES_PER_PERIOD);
@@ -299,30 +239,26 @@ static void bpsk_core(void)
     // printf("err: %0.04f\n", bpsk_state.nco.error);
 }
 
-int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb, uint32_t *processed_samples)
-{
+int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb,
+               uint32_t *processed_samples) {
     *processed_samples = 0;
-    while (1)
-    {
+    while (1) {
         // If we've run out of samples, fill the sample buffer
         bpsk_state.current_offset += 1;
-        if (bpsk_state.current_offset >= SAMPLES_PER_PERIOD)
-        {
+        if (bpsk_state.current_offset >= SAMPLES_PER_PERIOD) {
             // If there aren't any bytes remaining to process, return.
             if (nb == 0) {
                 return 0;
             }
             // If there's data in the cache buffer, use that as the source
             // for data.
-            else if (bpsk_state.cache_capacity > 0)
-            {
+            else if (bpsk_state.cache_capacity > 0) {
                 // If there won't be enough data to process, copy the
                 // remainder to the cache and return.
-                if (bpsk_state.cache_capacity + nb < SAMPLES_PER_PERIOD)
-                {
+                if (bpsk_state.cache_capacity + nb < SAMPLES_PER_PERIOD) {
                     printf("Buffer not big enough, stashing in cache\n");
                     memcpy(&bpsk_state.cache[bpsk_state.cache_capacity],
-                           samples, nb * sizeof(uint16_t));
+                           samples, nb * sizeof(demod_sample_t));
                     bpsk_state.cache_capacity += nb;
                     *processed_samples += nb;
                     // fclose(output);
@@ -331,16 +267,22 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb, uint32_t *process
 
                 // There is enough data if we combine the cache with fresh data,
                 // so determine how many samples to take.
-                uint32_t samples_to_take = (SAMPLES_PER_PERIOD - bpsk_state.cache_capacity);
+                uint32_t samples_to_take =
+                    (SAMPLES_PER_PERIOD - bpsk_state.cache_capacity);
 
-                // printf("Pulling %d samples from cache and adding %d samples from pool of %d\n",
+                // printf("Pulling %d samples from cache and adding %d samples
+                // from pool of %d\n",
                 //     bpsk_state.cache_capacity,
                 //     samples_to_take, nb);
                 memcpy(&bpsk_state.cache[bpsk_state.cache_capacity], samples,
-                       samples_to_take * sizeof(uint16_t));
+                       samples_to_take * sizeof(demod_sample_t));
 
-                // There is enough data, so convert it to f32 and clear the cache
-                arm_q15_to_float(bpsk_state.cache, bpsk_state.current,
+                // There is enough data, so convert it to f32 and clear the
+                // cache
+#ifdef CAPTURE_BUFFER
+                append_to_capture_buffer(bpsk_state.cache);
+#endif
+                arm_q31_to_float(bpsk_state.cache, bpsk_state.current,
                                  SAMPLES_PER_PERIOD);
                 bpsk_state.cache_capacity = 0;
 
@@ -349,21 +291,23 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb, uint32_t *process
                 (*processed_samples) += samples_to_take;
             }
             // Otherwise, the cache is empty, so operate directly on sample data
-            else
-            {
+            else {
                 // If there isn't enough data to operate on, store it in the
                 // cache.
-                if (nb < SAMPLES_PER_PERIOD)
-                {
+                if (nb < SAMPLES_PER_PERIOD) {
                     // printf("Only %d samples left, stashing in cache\n", nb);
-                    memcpy(bpsk_state.cache, samples, nb * sizeof(uint16_t));
+                    memcpy(bpsk_state.cache, samples, nb * sizeof(demod_sample_t));
                     bpsk_state.cache_capacity = nb;
                     (*processed_samples) += nb;
                     return 0;
                 }
 
                 // Directly convert the sample data to f32
-                arm_q15_to_float(samples, bpsk_state.current, SAMPLES_PER_PERIOD);
+#ifdef CAPTURE_BUFFER
+                append_to_capture_buffer(samples);
+#endif
+                arm_q31_to_float(samples, bpsk_state.current,
+                                 SAMPLES_PER_PERIOD);
                 nb -= SAMPLES_PER_PERIOD;
                 samples += SAMPLES_PER_PERIOD;
                 (*processed_samples) += SAMPLES_PER_PERIOD;
@@ -373,17 +317,16 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb, uint32_t *process
             bpsk_state.current_offset = 0;
         }
 
-
         // If the PLL crosses the 50% threshold, indicate a new bit.
-        if (bpsk_state.bit_pll < 0.5 && (bpsk_state.bit_pll + bpsk_state.pll_incr) >= 0.5)
-        {
-            int state = bpsk_state.i_lpf_samples[bpsk_state.current_offset] > 0.0;
+        if (bpsk_state.bit_pll < 0.5 &&
+            (bpsk_state.bit_pll + bpsk_state.pll_incr) >= 0.5) {
+            int state =
+                bpsk_state.i_lpf_samples[bpsk_state.current_offset] > 0.0;
             *bit = !(state ^ bpsk_state.last_state);
             bpsk_state.last_state = state;
 
             bpsk_state.bit_acc = (bpsk_state.bit_acc << 1) | *bit;
-            if ((bpsk_state.bit_acc & 3) == 0)
-            {
+            if ((bpsk_state.bit_acc & 3) == 0) {
                 print_char(bpsk_state.bit_acc);
                 bpsk_state.bit_acc = 0;
             }
@@ -391,8 +334,7 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb, uint32_t *process
 
         // Advance the PLL, looping it when it passes 1
         bpsk_state.bit_pll += bpsk_state.pll_incr;
-        if (bpsk_state.bit_pll >= 1)
-        {
+        if (bpsk_state.bit_pll >= 1) {
             bpsk_state.bit_pll -= 1;
         }
     }
