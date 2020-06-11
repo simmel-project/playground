@@ -245,81 +245,110 @@ static void bpsk_core(void) {
     // printf("err: %0.04f\n", bpsk_state.nco.error);
 }
 
+/// Attempt to fill the `bpsk_state.current` buffer with `SAMPLES_PER_PERIOD`
+/// samples of data. If there is data in the `bpsk_state.cache` buffer, pull
+/// samples from there. Otherwise, pull samples from the `samples` array.
+/// Returns -1 if there isn't enough data to process, or >=0 indicating the
+/// number of samples removed from `samples`.
+static int bpsk_fill_buffer(demod_sample_t *samples, uint32_t nb,
+                            uint32_t *processed_samples) {
+    // If there aren't any bytes remaining to process, return.
+    if (nb == 0) {
+        return -1;
+    }
+    // If there's data in the cache buffer, use that as the source
+    // for data.
+    else if (bpsk_state.cache_capacity > 0) {
+        // If there won't be enough data to process, copy the
+        // remainder to the cache and return.
+        if (bpsk_state.cache_capacity + nb < SAMPLES_PER_PERIOD) {
+            printf("Buffer not big enough, stashing in cache\n");
+            memcpy(&bpsk_state.cache[bpsk_state.cache_capacity], samples,
+                   nb * sizeof(demod_sample_t));
+            bpsk_state.cache_capacity += nb;
+            *processed_samples += nb;
+            return -1;
+        }
+
+        // There is enough data if we combine the cache with fresh data,
+        // so determine how many samples to take.
+        uint32_t samples_to_take =
+            (SAMPLES_PER_PERIOD - bpsk_state.cache_capacity);
+
+        // printf("Pulling %d samples from cache and adding %d samples
+        // from pool of %d\n",
+        //     bpsk_state.cache_capacity,
+        //     samples_to_take, nb);
+        memcpy(&bpsk_state.cache[bpsk_state.cache_capacity], samples,
+               samples_to_take * sizeof(demod_sample_t));
+
+#ifdef CAPTURE_BUFFER
+        append_to_capture_buffer(bpsk_state.cache);
+#endif
+
+        // There is enough data, so convert it to f32 and clear the
+        // cache
+        arm_q31_to_float(bpsk_state.cache, bpsk_state.current,
+                         SAMPLES_PER_PERIOD);
+        bpsk_state.cache_capacity = 0;
+
+        nb -= samples_to_take;
+        samples += samples_to_take;
+        (*processed_samples) += samples_to_take;
+        return samples_to_take;
+    }
+    // Otherwise, the cache is empty, so operate directly on sample data
+    else {
+        // If there isn't enough data to operate on, store it in the
+        // cache.
+        if (nb < SAMPLES_PER_PERIOD) {
+            // printf("Only %d samples left, stashing in cache\n", nb);
+            memcpy(bpsk_state.cache, samples, nb * sizeof(demod_sample_t));
+            bpsk_state.cache_capacity = nb;
+            (*processed_samples) += nb;
+            return -1;
+        }
+
+#ifdef CAPTURE_BUFFER
+        append_to_capture_buffer(samples);
+#endif
+        // Directly convert the sample data to f32
+        arm_q31_to_float(samples, bpsk_state.current, SAMPLES_PER_PERIOD);
+        nb -= SAMPLES_PER_PERIOD;
+        samples += SAMPLES_PER_PERIOD;
+        (*processed_samples) += SAMPLES_PER_PERIOD;
+    }
+
+    // Indicate we successfully filled the buffer
+    return SAMPLES_PER_PERIOD;
+}
+
 int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
                uint32_t *processed_samples) {
     *processed_samples = 0;
     while (1) {
-        // If we've run out of samples, fill the sample buffer
+
+        // Advance to the next demodualted sample
         bpsk_state.current_offset += 1;
+
+        // If we've run out of demodulated signal data, fill the sample buffer
         if (bpsk_state.current_offset >= SAMPLES_PER_PERIOD) {
-            // If there aren't any bytes remaining to process, return.
-            if (nb == 0) {
+
+            // Remove samples from the internal cache and/or the samples
+            // provided to us in the `samples` array. If there is not enough
+            // data to continue, this function will store all remaining data in
+            // a cache and return `-1`.
+            int samples_removed =
+                bpsk_fill_buffer(samples, nb, processed_samples);
+            if (samples_removed == -1) {
                 return 0;
             }
-            // If there's data in the cache buffer, use that as the source
-            // for data.
-            else if (bpsk_state.cache_capacity > 0) {
-                // If there won't be enough data to process, copy the
-                // remainder to the cache and return.
-                if (bpsk_state.cache_capacity + nb < SAMPLES_PER_PERIOD) {
-                    printf("Buffer not big enough, stashing in cache\n");
-                    memcpy(&bpsk_state.cache[bpsk_state.cache_capacity],
-                           samples, nb * sizeof(demod_sample_t));
-                    bpsk_state.cache_capacity += nb;
-                    *processed_samples += nb;
-                    // fclose(output);
-                    return 0;
-                }
+            nb -= samples_removed;
+            samples += samples_removed;
 
-                // There is enough data if we combine the cache with fresh data,
-                // so determine how many samples to take.
-                uint32_t samples_to_take =
-                    (SAMPLES_PER_PERIOD - bpsk_state.cache_capacity);
-
-                // printf("Pulling %d samples from cache and adding %d samples
-                // from pool of %d\n",
-                //     bpsk_state.cache_capacity,
-                //     samples_to_take, nb);
-                memcpy(&bpsk_state.cache[bpsk_state.cache_capacity], samples,
-                       samples_to_take * sizeof(demod_sample_t));
-
-                // There is enough data, so convert it to f32 and clear the
-                // cache
-#ifdef CAPTURE_BUFFER
-                append_to_capture_buffer(bpsk_state.cache);
-#endif
-                arm_q31_to_float(bpsk_state.cache, bpsk_state.current,
-                                 SAMPLES_PER_PERIOD);
-                bpsk_state.cache_capacity = 0;
-
-                nb -= samples_to_take;
-                samples += samples_to_take;
-                (*processed_samples) += samples_to_take;
-            }
-            // Otherwise, the cache is empty, so operate directly on sample data
-            else {
-                // If there isn't enough data to operate on, store it in the
-                // cache.
-                if (nb < SAMPLES_PER_PERIOD) {
-                    // printf("Only %d samples left, stashing in cache\n", nb);
-                    memcpy(bpsk_state.cache, samples,
-                           nb * sizeof(demod_sample_t));
-                    bpsk_state.cache_capacity = nb;
-                    (*processed_samples) += nb;
-                    return 0;
-                }
-
-                // Directly convert the sample data to f32
-#ifdef CAPTURE_BUFFER
-                append_to_capture_buffer(samples);
-#endif
-                arm_q31_to_float(samples, bpsk_state.current,
-                                 SAMPLES_PER_PERIOD);
-                nb -= SAMPLES_PER_PERIOD;
-                samples += SAMPLES_PER_PERIOD;
-                (*processed_samples) += SAMPLES_PER_PERIOD;
-            }
-
+            // Process the contents of the bpsk_state. This reads in the samples
+            // and generates output data, primarily the `i_lpf_samples` array
+            // which contains the demodulated signal data.
             bpsk_core();
             bpsk_state.current_offset = 0;
         }
