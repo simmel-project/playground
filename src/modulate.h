@@ -13,6 +13,7 @@ struct modulate_cfg {
 
 struct modulate_state {
     struct modulate_cfg cfg;
+    int run;
     float bit_pll;
     float baud_pll;
     int polarity;

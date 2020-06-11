@@ -18,6 +18,7 @@ void modulate_init(struct modulate_state *state, uint32_t carrier,
     state->varcode_pos = 0;
     state->varcode_str = ""; // Default to an empty string
     state->bit_count = -1;
+    state->run = 0;
 
     return;
 }
@@ -43,6 +44,11 @@ static void send_bit(struct modulate_state *state, int bit) {
 /// must generate the next bit.
 int modulate_next_sample(struct modulate_state *state) {
     int pwm_state;
+
+    if(!state->run) {
+      return 0;
+    }
+    
     if (state->bit_count >= 32) {
         // Find the next bit
         int next_bit = 0;
@@ -55,6 +61,7 @@ int modulate_next_sample(struct modulate_state *state) {
             state->str_pos = 0;
             state->varcode_pos = -ZERO_RUN;
             state->varcode_str = char_to_varcode(state->cfg.string[0]);
+ 	    state->run = 0;
         } else if (!state->varcode_str[state->varcode_pos]) {
             // Advance to the next symbol in the string.
             state->varcode_pos = -2; // Send two bytes of 0
