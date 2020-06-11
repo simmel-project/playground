@@ -164,8 +164,10 @@ void bpsk_demod_init(void) {
         0xf8, 0x11, 0x05, 0x00, // chunk size
     };
     uint32_t rate = 62500;
+    uint32_t len = sizeof(sample_wave.saved_samples);
     memcpy(sample_wave.header, wav_header, sizeof(wav_header));
     memcpy(&sample_wave.header[24], &rate, sizeof(rate));
+    memcpy(&sample_wave.header[40], &len, sizeof(len));
 #endif
 }
 
