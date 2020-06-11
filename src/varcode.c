@@ -1,38 +1,38 @@
 #include <stdint.h>
 char varcode_to_char(uint32_t c) {
     switch (c) {
-        case 683: return '\x00';
-        case 731: return '\x01';
-        case 749: return '\x02';
-        case 887: return '\x03';
-        case 747: return '\x04';
-        case 863: return '\x05';
-        case 751: return '\x06';
-        case 765: return '\x07';
-        case 767: return '\x08';
-        case 239: return '\x09';
+        // case 683: return '\x00';
+        // case 731: return '\x01';
+        // case 749: return '\x02';
+        // case 887: return '\x03';
+        // case 747: return '\x04';
+        // case 863: return '\x05';
+        // case 751: return '\x06';
+        // case 765: return '\x07';
+        // case 767: return '\x08';
+        // case 239: return '\x09';
         case 29: return '\x0A';
-        case 879: return '\x0B';
-        case 733: return '\x0C';
+        // case 879: return '\x0B';
+        // case 733: return '\x0C';
         case 31: return '\x0D';
-        case 885: return '\x0E';
-        case 939: return '\x0F';
-        case 759: return '\x10';
-        case 757: return '\x11';
-        case 941: return '\x12';
-        case 943: return '\x13';
-        case 859: return '\x14';
-        case 875: return '\x15';
-        case 877: return '\x16';
-        case 855: return '\x17';
-        case 891: return '\x18';
-        case 893: return '\x19';
-        case 951: return '\x1A';
-        case 853: return '\x1B';
-        case 861: return '\x1C';
-        case 955: return '\x1D';
-        case 763: return '\x1E';
-        case 895: return '\x1F';
+        // case 885: return '\x0E';
+        // case 939: return '\x0F';
+        // case 759: return '\x10';
+        // case 757: return '\x11';
+        // case 941: return '\x12';
+        // case 943: return '\x13';
+        // case 859: return '\x14';
+        // case 875: return '\x15';
+        // case 877: return '\x16';
+        // case 855: return '\x17';
+        // case 891: return '\x18';
+        // case 893: return '\x19';
+        // case 951: return '\x1A';
+        // case 853: return '\x1B';
+        // case 861: return '\x1C';
+        // case 955: return '\x1D';
+        // case 763: return '\x1E';
+        // case 895: return '\x1F';
         case 1: return ' ';
         case 511: return '!';
         case 351: return '"';
@@ -128,7 +128,7 @@ char varcode_to_char(uint32_t c) {
         case 443: return '|';
         case 693: return '}';
         case 727: return '~';
-        case 949: return '\x7F';
+        // case 949: return '\x7F';
     }
     return '\0';
 }
