@@ -1,29 +1,16 @@
 {
     "configurations": [
         {
-            "name": "Win32",
-            "defines": [
-                "_DEBUG",
-                "UNICODE",
-                "_UNICODE"
-            ],
-            "windowsSdkVersion": "10.0.18362.0",
-            "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.25.28610/bin/Hostx64/x64/cl.exe",
-            "cStandard": "c11",
-            "cppStandard": "c++17",
-            "includePath": [
-                "${default}",
-                "${workspaceFolder}/src/cmsis/include"
-            ]
-        },
-        {
             "name": "Simmel",
             "defines": [
                 "ARM_MATH_CM4",
-                "__FPU_PRESENT=1"
+                "__FPU_PRESENT=1",
+                "NRF52833_XXAA",
+                "S140",
+                "CFG_TUSB_MCU=OPT_MCU_NRF5X"
             ],
-            "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.25.28610/bin/Hostx64/x64/cl.exe",
-            "cStandard": "c11",
+            "compilerPath": "C:\\ProgramData\\chocolatey\\bin\\arm-none-eabi-gcc.exe",
+            "cStandard": "gnu11",
             "cppStandard": "c++17",
             "includePath": [
                 "${default}",
@@ -35,7 +22,22 @@
                 "${workspaceFolder}/lib/nrfx/mdk",
                 "${workspaceFolder}/lib/nrfx/templates",
                 "${workspaceFolder}/lib/tinyusb/src"
-            ]
+            ],
+            "compilerArgs": [
+                "-mthumb",
+                "-mabi=aapcs",
+                "-mcpu=cortex-m4",
+                "-mtune=cortex-m4",
+                "-mfloat-abi=hard",
+                "-mfpu=fpv4-sp-d16",
+                "-ffunction-sections",
+                "-fdata-sections",
+                "-fno-builtin",
+                "-fshort-enums",
+                "-fstack-usage",
+                "-fno-strict-aliasing"
+            ],
+            "intelliSenseMode": "gcc-arm"
         }
     ],
     "version": 4
