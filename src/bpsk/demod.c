@@ -56,7 +56,6 @@ struct bpsk_state {
     /// buffer, so that we can keep track of it between calls.
     float32_t current[SAMPLES_PER_PERIOD];
     uint32_t current_offset;
-    float32_t last_sample;
 
     /// If there aren't enough samples to convert data from q15
     /// to f32, store them in here and return.
@@ -87,14 +86,10 @@ struct bpsk_state {
     float32_t pll_incr_nudge;
     int bit_acc;
     int last_state;
+    int last_bit_state;
 };
 
 static struct bpsk_state bpsk_state;
-
-extern char varcode_to_char(uint32_t c);
-static void print_char(uint32_t c) {
-    printf("%c", varcode_to_char(c >> 2));
-}
 
 static void make_nco(float32_t *i, float32_t *q) {
     // control is a number from +1 to -1, which translates to -pi to +pi
@@ -151,7 +146,6 @@ void bpsk_demod_init(void) {
     bpsk_state.pll_incr_nudge = bpsk_state.pll_incr / 8.0;
     bpsk_state.bit_acc = 0;
     bpsk_state.last_state = 0;
-    bpsk_state.last_sample = 0.0;
 
 #ifdef CAPTURE_BUFFER
     const uint8_t wav_header[] = {
@@ -251,7 +245,7 @@ static void bpsk_core(void) {
     // printf("err: %0.04f\n", bpsk_state.nco.error);
 }
 
-int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb,
+int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
                uint32_t *processed_samples) {
     *processed_samples = 0;
     while (1) {
@@ -330,43 +324,38 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb,
             bpsk_state.current_offset = 0;
         }
 
-        float32_t this_sample =
-            bpsk_state.i_lpf_samples[bpsk_state.current_offset];
-        // If the PLL crosses the 50% threshold, indicate a new bit.
-        if (bpsk_state.bit_pll < 0.5 &&
-            (bpsk_state.bit_pll + bpsk_state.pll_incr) >= 0.5) {
-            int state = this_sample > 0.0;
-            *bit = !(state ^ bpsk_state.last_state);
-            bpsk_state.last_state = state;
+        int state = bpsk_state.i_lpf_samples[bpsk_state.current_offset] > 0.0;
 
-            bpsk_state.bit_acc = (bpsk_state.bit_acc << 1) | *bit;
-            if ((bpsk_state.bit_acc & 3) == 0) {
-                print_char(bpsk_state.bit_acc);
-                bpsk_state.bit_acc = 0;
-            }
-        }
-
-        // If there's a transition, nudge the PLL away from the middle.
-        if (((bpsk_state.last_sample < 0) && (this_sample > 0)) ||
-            ((bpsk_state.last_sample > 0) && (this_sample < 0))) {
+        // If the state has transitioned, nudge the PLL towards the middle of
+        // the bit in order to keep locked on.
+        if (state != bpsk_state.last_state) {
 #ifdef LOG_TRANSITION_PLLS
             transition_plls[transition_pll_offset++] = bpsk_state.bit_pll;
-            if (transition_pll_offset >= 64)
-                transition_pll_offset = 0;
+            if (transition_pll_offset >= 64) transition_pll_offset = 0;
 #endif
+            // Perform the nudge depending on whether it's in the first
+            // half of the pulse or the second.
             if (bpsk_state.bit_pll < 0.5) {
-                bpsk_state.bit_pll -= bpsk_state.pll_incr_nudge;
-            } else {
                 bpsk_state.bit_pll += bpsk_state.pll_incr_nudge;
+            } else {
+                bpsk_state.bit_pll -= bpsk_state.pll_incr_nudge;
             }
+            bpsk_state.last_state = state;
         }
-        bpsk_state.last_sample =
-            bpsk_state.i_lpf_samples[bpsk_state.current_offset];
 
-        // Advance the PLL, looping it when it passes 1
+        // Advance the PLL. When it hits 1.0, it means we've read an entire bit.
+        // Return `1` indicating that `*bit` is valid, so the caller can handle
+        // it.
         bpsk_state.bit_pll += bpsk_state.pll_incr;
         if (bpsk_state.bit_pll >= 1) {
             bpsk_state.bit_pll -= 1;
+
+            // A transition (e.g. from high-to-low or low-to-high) is
+            // a logical `0`, whereas no transition is a `1`. Calculate
+            // this, and stash the current state for the next loop.
+            *bit = !(state ^ bpsk_state.last_bit_state);
+            bpsk_state.last_bit_state = state;
+            return 1;
         }
     }
 }

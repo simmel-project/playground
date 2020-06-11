@@ -13,7 +13,7 @@ struct bpsk_state;
 #define SAMPLES_PER_PERIOD 20 // Must evenly divide CARRIER_TONE
 
 void bpsk_demod_init(void);
-int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb,
+int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
                uint32_t *processed_samples);
 
 #endif
