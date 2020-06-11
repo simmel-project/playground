@@ -325,6 +325,8 @@ static int bpsk_fill_buffer(demod_sample_t *samples, uint32_t nb,
     return SAMPLES_PER_PERIOD;
 }
 
+#define HYSTERESIS (8.0/32768.0)
+
 int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
                uint32_t *processed_samples) {
     *processed_samples = 0;
@@ -355,7 +357,18 @@ int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
             bpsk_state.current_offset = 0;
         }
 
-        int state = bpsk_state.i_lpf_samples[bpsk_state.current_offset] > 0.0;
+	int state;
+	if( bpsk_state.last_state == 0 ) {
+	  if( bpsk_state.i_lpf_samples[bpsk_state.current_offset] > HYSTERESIS )
+	    state = 1;
+	  else
+	    state = 0;
+	} else {
+	  if( bpsk_state.i_lpf_samples[bpsk_state.current_offset] < -HYSTERESIS )
+	    state = 0;
+	  else
+	    state = 1;
+	}
 
         // If the state has transitioned, nudge the PLL towards the middle of
         // the bit in order to keep locked on.
