@@ -165,9 +165,13 @@ void PWM0_IRQHandler(void) {
             nrf_gpio_pin_clear(0 + 19);
         } else {
             nrf_gpio_pin_clear(0 + 2);
-            nrf_gpio_pin_set(0 + 19);
+	    nrf_gpio_pin_set(0 + 19);
         }
         samplecount = samplecount + 1;
+	
+	if( (samplecount % (62500 * 10)) == 0 ) {
+	  mod_instance.run = 1;
+	}
 
         // compute next state in arrears, because the computation takes variable
         // time
