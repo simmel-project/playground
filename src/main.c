@@ -46,6 +46,7 @@
 #include "i2s.h"
 #include "spi.h"
 #include "usb.h"
+#include "modulate.h"
 
 #include "printf.h"
 
@@ -53,7 +54,6 @@
 #define CARRIER_TONE 20840
 #define BAUD_RATE (651.0f) // 31.25
 #define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
-extern const char *char_to_varcode(char c);
 
 #define TEST_STRING                                                            \
     "Four score and seven years ago, our fathers brought forth on this "       \
@@ -133,163 +133,6 @@ volatile float agc_min = 10;
 volatile float agc_reduce_threshold = 300;
 uint32_t clipped_samples;
 
-void modulate_init(struct modulate_state *state, uint32_t carrier,
-                   uint32_t rate, float baud,
-                   void (*write)(void *arg, void *data, unsigned int count),
-                   void *arg, const char *str) {
-    state->cfg.rate = rate;
-    state->cfg.carrier = carrier;
-    state->cfg.baud = baud;
-    state->cfg.pll_incr = (float)carrier / (float)rate;
-    state->cfg.write = write;
-    state->cfg.write_arg = arg;
-    state->cfg.omega = (2.0 * M_PI * carrier) / rate;
-    state->bit_pll = 0.0;
-    state->baud_pll = 0.0;
-    state->polarity = 0;
-    state->cfg.string = str;
-    state->str_pos = 0;
-    state->varcode_pos = -1;
-    state->varcode_str[0] = '\0';
-    state->bitcount = -1;
-    state->high = 32767 / 4;
-    state->low = -32768 / 4;
-    state->modulating = 1;
-    return;
-}
-
-static void send_bit(struct modulate_state *state, int bit) {
-    state->low = -32768 / 4;
-    state->high = 32767 / 4;
-
-    state->polarity ^= !bit;
-    if (state->polarity) {
-        state->low = 32767 / 4;
-        state->high = -32768 / 4;
-    }
-
-    int bit_count = 0;
-
-    while (bit_count < 32) {
-        if (state->baud_pll > 0.5) {
-            // printf("writing high %d: @ %p ", high, &high);
-            state->cfg.write(state->cfg.write_arg, &(state->high),
-                             sizeof(state->high));
-        } else {
-            // printf("writing low %d: @ %p ", low, &low);
-            state->cfg.write(state->cfg.write_arg, &(state->low),
-                             sizeof(state->low));
-        }
-        state->baud_pll += state->cfg.pll_incr;
-        if (state->baud_pll > 1.0) {
-            bit_count++;
-            state->baud_pll -= 1.0;
-        }
-    }
-}
-
-static void loop_bit(struct modulate_state *state) {
-
-    if (state->bitcount < 32) {
-        if (state->baud_pll > 0.5) {
-            // printf("writing high %d: @ %p ", high, &high);
-            state->cfg.write(state->cfg.write_arg, &state->high,
-                             sizeof(state->high));
-        } else {
-            // printf("writing low %d: @ %p ", low, &low);
-            state->cfg.write(state->cfg.write_arg, &state->low,
-                             sizeof(state->low));
-        }
-        state->baud_pll += state->cfg.pll_incr;
-        if (state->baud_pll > 1.0) {
-            state->bitcount++;
-            state->baud_pll -= 1.0;
-        }
-    } else {
-        state->bitcount = -1;
-    }
-}
-
-static void set_bit(struct modulate_state *state, int bit) {
-    state->low = -32768 / 4;
-    state->high = 32767 / 4;
-
-    state->polarity ^= !bit;
-    if (state->polarity) {
-        state->low = 32767 / 4;
-        state->high = -32768 / 4;
-    }
-
-    state->bitcount = 0;
-    loop_bit(state);
-}
-
-#define ZERO_RUN 8
-void modulate_loop(struct modulate_state *state) {
-    char c;
-
-    if (state->modulating != 1) return;
-
-    if (state->bitcount != -1) {
-        loop_bit(state);
-    } else {
-        if (state->str_pos < ZERO_RUN) {
-            set_bit(state, 0);
-            state->str_pos++;
-        } else {
-            if (state->varcode_pos == -1) {
-                c = state->cfg.string[state->str_pos - ZERO_RUN];
-                // printf("%c", c);
-                if (c != '\0') {
-                    strncpy(state->varcode_str, char_to_varcode(c), 16);
-                    state->varcode_pos = 0;
-                    state->str_pos++;
-                } else {
-                    state->str_pos = 0;
-                    state->varcode_pos = -1;
-                    state->modulating = 0; // stop the loop
-                    return;
-                }
-                set_bit(state,
-                        0); // inserts extra zero on beginning, but second of
-                            // two trailing 0's at end of a varcode
-            } else {
-                int bit = 0;
-                bit = state->varcode_str[state->varcode_pos];
-                if (bit != '\0') {
-                    set_bit(state, bit != '0');
-                    state->varcode_pos++;
-                } else {
-                    set_bit(state,
-                            0); // first of two trailing 0 bits after a varcode
-                    state->varcode_pos = -1;
-                }
-            }
-        }
-    }
-}
-
-void modulate_string(struct modulate_state *state, const char *string) {
-    char c;
-
-    printf("Sending: ");
-    for (unsigned int i = 0; i < 8; i++) {
-        send_bit(state, 0);
-    }
-
-    while ((c = *string++) != '\0') {
-        const char *bit_pattern = char_to_varcode(c);
-
-        int bit = 0;
-        while ((bit = *bit_pattern++) != '\0') {
-            send_bit(state, bit != '0');
-        }
-        send_bit(state, 0);
-        send_bit(state, 0);
-    }
-    printf("\n");
-}
-
 extern uint32_t samplecount;
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
@@ -298,18 +141,6 @@ static void background_tasks(void) {
     if ((samplecount % 62500) == 0) {
         printf("%d\n", samplecount / 62500);
     }
-}
-
-extern uint32_t pwmstate;
-static void append_pwm(void *arg, void *data, unsigned int count) {
-    // printf("%p %p %ud\n", )
-    // printf("write %d count %u\n", ((int16_t *)data)[0], count);
-
-    // fwrite(data, count, 1, arg);
-    if (*((int16_t *)data) > 0)
-        pwmstate = 1;
-    else
-        pwmstate = 0;
 }
 
 int main(void) {
@@ -346,8 +177,7 @@ int main(void) {
 
     uint32_t rate = SAMPLE_RATE;
     uint32_t tone = CARRIER_TONE; // rate / 3;
-    modulate_init(&mod_instance, tone, rate, 1.0 /* unimplemented */,
-                  append_pwm, NULL, TEST_STRING);
+    modulate_init(&mod_instance, tone, rate, TEST_STRING);
 
     nus_init(&i2s_config, record_buffer, sizeof(record_buffer));
     nus_start();

@@ -11,12 +11,13 @@
 #include "nrf_gpio.h"
 
 #include "i2s.h"
+#include "modulate.h"
 
 static volatile uintptr_t buffers[2];
 static volatile size_t buffer_size;
 static volatile uint8_t buffer_num;
 uint32_t samplecount = 1;
-uint32_t pwmstate = 0;
+volatile uint32_t pwmstate = 0;
 
 static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
 
@@ -155,11 +156,11 @@ void I2S_IRQHandler(void) {
 }
 
 extern struct modulate_state mod_instance;
-void modulate_loop(struct modulate_state *state);
 
 void PWM0_IRQHandler(void) {
     if (NRF_PWM0->EVENTS_PWMPERIODEND) {
-        if (pwmstate) {
+        static int pwm_state = 0;
+        if (pwm_state) {
             nrf_gpio_pin_set(0 + 2);
             nrf_gpio_pin_clear(0 + 19);
         } else {
@@ -170,11 +171,7 @@ void PWM0_IRQHandler(void) {
 
         // compute next state in arrears, because the computation takes variable
         // time
-        modulate_loop(&mod_instance);
-
-        if ((samplecount % (62500 * 5)) == 0) {
-            mod_instance.modulating = 1;
-        }
+        pwm_state = modulate_next_sample(&mod_instance);
 
         NRF_PWM0->EVENTS_PWMPERIODEND = 0;
     }
