@@ -19,6 +19,7 @@
 #include "lpf_coefficients.h"
 
 // #define CAPTURE_BUFFER
+// #define LOG_TRANSITION_PLLS
 
 struct nco_state {
     float32_t samplerate; // Hz
@@ -31,7 +32,8 @@ struct nco_state {
 
 // Dump this with:
 // ```
-//  dump binary memory sample.wav &sample_wave ((uint32_t)&sample_wave)+sizeof(sample_wave)
+//  dump binary memory sample.wav &sample_wave
+//  ((uint32_t)&sample_wave)+sizeof(sample_wave)
 // ```
 #ifdef CAPTURE_BUFFER
 #define CAPTURE_BUFFER_COUNT (20000)
@@ -43,11 +45,18 @@ struct sample_wave sample_wave;
 uint32_t saved_samples_ptr;
 #endif
 
+// Log what the PLL is when a bit transition is encountered
+#ifdef LOG_TRANSITION_PLLS
+__attribute__((used)) float32_t transition_plls[64];
+uint32_t transition_pll_offset;
+#endif
+
 struct bpsk_state {
     /// Convert incoming q15 values into f32 values into this
     /// buffer, so that we can keep track of it between calls.
     float32_t current[SAMPLES_PER_PERIOD];
     uint32_t current_offset;
+    float32_t last_sample;
 
     /// If there aren't enough samples to convert data from q15
     /// to f32, store them in here and return.
@@ -75,6 +84,7 @@ struct bpsk_state {
     // Signal decoding
     float32_t bit_pll;
     float32_t pll_incr;
+    float32_t pll_incr_nudge;
     int bit_acc;
     int last_state;
 };
@@ -138,8 +148,10 @@ void bpsk_demod_init(void) {
 
     bpsk_state.bit_pll = 0.0;
     bpsk_state.pll_incr = ((float)BAUD_RATE / (float)SAMPLE_RATE);
+    bpsk_state.pll_incr_nudge = bpsk_state.pll_incr / 8.0;
     bpsk_state.bit_acc = 0;
     bpsk_state.last_state = 0;
+    bpsk_state.last_sample = 0.0;
 
 #ifdef CAPTURE_BUFFER
     const uint8_t wav_header[] = {
@@ -148,12 +160,12 @@ void bpsk_demod_init(void) {
         0x57, 0x41, 0x56, 0x45, // 'WAVE'
         0x66, 0x6d, 0x74, 0x20, // 'fmt '
         0x10, 0x00, 0x00, 0x00, // Sub chunk 1 size (chunk is 16 bytes)
-        0x01, 0x00, // Audio format (1 = pcm)
-        0x01, 0x00, // Numer of channels (1 = mono)
+        0x01, 0x00,             // Audio format (1 = pcm)
+        0x01, 0x00,             // Numer of channels (1 = mono)
         0x11, 0x2b, 0x00, 0x00, // Sample rate
         0x22, 0x56, 0x00, 0x00, // Byte rate
-        0x02, 0x00, // Block alignment
-        32, 0x00, // Bits per sample
+        0x02, 0x00,             // Block alignment
+        32,   0x00,             // Bits per sample
         0x64, 0x61, 0x74, 0x61, // 'data'
         0xf8, 0x11, 0x05, 0x00, // chunk size
     };
@@ -296,7 +308,8 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb,
                 // cache.
                 if (nb < SAMPLES_PER_PERIOD) {
                     // printf("Only %d samples left, stashing in cache\n", nb);
-                    memcpy(bpsk_state.cache, samples, nb * sizeof(demod_sample_t));
+                    memcpy(bpsk_state.cache, samples,
+                           nb * sizeof(demod_sample_t));
                     bpsk_state.cache_capacity = nb;
                     (*processed_samples) += nb;
                     return 0;
@@ -317,11 +330,12 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb,
             bpsk_state.current_offset = 0;
         }
 
+        float32_t this_sample =
+            bpsk_state.i_lpf_samples[bpsk_state.current_offset];
         // If the PLL crosses the 50% threshold, indicate a new bit.
         if (bpsk_state.bit_pll < 0.5 &&
             (bpsk_state.bit_pll + bpsk_state.pll_incr) >= 0.5) {
-            int state =
-                bpsk_state.i_lpf_samples[bpsk_state.current_offset] > 0.0;
+            int state = this_sample > 0.0;
             *bit = !(state ^ bpsk_state.last_state);
             bpsk_state.last_state = state;
 
@@ -331,6 +345,23 @@ int bpsk_demod(int *bit, demod_sample_t *samples, uint32_t nb,
                 bpsk_state.bit_acc = 0;
             }
         }
+
+        // If there's a transition, nudge the PLL away from the middle.
+        if (((bpsk_state.last_sample < 0) && (this_sample > 0)) ||
+            ((bpsk_state.last_sample > 0) && (this_sample < 0))) {
+#ifdef LOG_TRANSITION_PLLS
+            transition_plls[transition_pll_offset++] = bpsk_state.bit_pll;
+            if (transition_pll_offset >= 64)
+                transition_pll_offset = 0;
+#endif
+            if (bpsk_state.bit_pll < 0.5) {
+                bpsk_state.bit_pll -= bpsk_state.pll_incr_nudge;
+            } else {
+                bpsk_state.bit_pll += bpsk_state.pll_incr_nudge;
+            }
+        }
+        bpsk_state.last_sample =
+            bpsk_state.i_lpf_samples[bpsk_state.current_offset];
 
         // Advance the PLL, looping it when it passes 1
         bpsk_state.bit_pll += bpsk_state.pll_incr;
