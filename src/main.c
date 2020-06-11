@@ -55,7 +55,10 @@
 #define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
 extern const char *char_to_varcode(char c);
 
-#define TEST_STRING "Four score and seven years ago, our fathers brought forth on this continent a new nation: conceived in liberty, and dedicated to the proposition that all men are created equal."
+#define TEST_STRING                                                            \
+    "Four score and seven years ago, our fathers brought forth on this "       \
+    "continent a new nation: conceived in liberty, and dedicated to the "      \
+    "proposition that all men are created equal."
 
 struct modulate_state mod_instance;
 
@@ -149,20 +152,20 @@ void modulate_init(struct modulate_state *state, uint32_t carrier,
     state->varcode_pos = -1;
     state->varcode_str[0] = '\0';
     state->bitcount = -1;
-    state->high = 32767/4;
-    state->low = -32768/4;
+    state->high = 32767 / 4;
+    state->low = -32768 / 4;
     state->modulating = 1;
     return;
 }
 
 static void send_bit(struct modulate_state *state, int bit) {
-    state->low = -32768/4;
-    state->high = 32767/4;
+    state->low = -32768 / 4;
+    state->high = 32767 / 4;
 
     state->polarity ^= !bit;
     if (state->polarity) {
-        state->low = 32767/4;
-        state->high = -32768/4;
+        state->low = 32767 / 4;
+        state->high = -32768 / 4;
     }
 
     int bit_count = 0;
@@ -170,10 +173,12 @@ static void send_bit(struct modulate_state *state, int bit) {
     while (bit_count < 32) {
         if (state->baud_pll > 0.5) {
             // printf("writing high %d: @ %p ", high, &high);
-	  state->cfg.write(state->cfg.write_arg, &(state->high), sizeof(state->high));
+            state->cfg.write(state->cfg.write_arg, &(state->high),
+                             sizeof(state->high));
         } else {
             // printf("writing low %d: @ %p ", low, &low);
-	  state->cfg.write(state->cfg.write_arg, &(state->low), sizeof(state->low));
+            state->cfg.write(state->cfg.write_arg, &(state->low),
+                             sizeof(state->low));
         }
         state->baud_pll += state->cfg.pll_incr;
         if (state->baud_pll > 1.0) {
@@ -188,10 +193,12 @@ static void loop_bit(struct modulate_state *state) {
     if (state->bitcount < 32) {
         if (state->baud_pll > 0.5) {
             // printf("writing high %d: @ %p ", high, &high);
-            state->cfg.write(state->cfg.write_arg, &state->high, sizeof(state->high));
+            state->cfg.write(state->cfg.write_arg, &state->high,
+                             sizeof(state->high));
         } else {
             // printf("writing low %d: @ %p ", low, &low);
-            state->cfg.write(state->cfg.write_arg, &state->low, sizeof(state->low));
+            state->cfg.write(state->cfg.write_arg, &state->low,
+                             sizeof(state->low));
         }
         state->baud_pll += state->cfg.pll_incr;
         if (state->baud_pll > 1.0) {
@@ -199,68 +206,68 @@ static void loop_bit(struct modulate_state *state) {
             state->baud_pll -= 1.0;
         }
     } else {
-      state->bitcount = -1;
+        state->bitcount = -1;
     }
 }
 
 static void set_bit(struct modulate_state *state, int bit) {
-    state->low = -32768/4;
-    state->high = 32767/4;
+    state->low = -32768 / 4;
+    state->high = 32767 / 4;
 
     state->polarity ^= !bit;
     if (state->polarity) {
-        state->low = 32767/4;
-        state->high = -32768/4;
+        state->low = 32767 / 4;
+        state->high = -32768 / 4;
     }
 
     state->bitcount = 0;
     loop_bit(state);
 }
 
-
 #define ZERO_RUN 8
 void modulate_loop(struct modulate_state *state) {
     char c;
 
-    if(state->modulating != 1)
-      return;
-    
-    if( state->bitcount != -1 ) {
-      loop_bit(state);
+    if (state->modulating != 1) return;
+
+    if (state->bitcount != -1) {
+        loop_bit(state);
     } else {
-      if( state->str_pos < ZERO_RUN ) {
-	set_bit(state, 0);
-	state->str_pos++;
-      } else {
-	if(state->varcode_pos == -1) {
-	  c = state->cfg.string[state->str_pos-ZERO_RUN];
-	  //printf("%c", c);
-	  if(c != '\0') {
-	    strncpy(state->varcode_str, char_to_varcode(c), 16);
-	    state->varcode_pos = 0;
-	    state->str_pos++;
-	  } else {
-	    state->str_pos = 0;
-	    state->varcode_pos = -1;
-	    state->modulating = 0; // stop the loop
-	    return;
-	  }
-	  set_bit(state, 0); // inserts extra zero on beginning, but second of two trailing 0's at end of a varcode
-	} else {
-	  int bit = 0;
-	  bit = state->varcode_str[state->varcode_pos];
-	  if( bit != '\0' ) {
-	    set_bit(state, bit != '0');
-	    state->varcode_pos++;
-	  } else {
-	    set_bit(state, 0); // first of two trailing 0 bits after a varcode
-	    state->varcode_pos = -1;
-	  }
-	}
-      }
+        if (state->str_pos < ZERO_RUN) {
+            set_bit(state, 0);
+            state->str_pos++;
+        } else {
+            if (state->varcode_pos == -1) {
+                c = state->cfg.string[state->str_pos - ZERO_RUN];
+                // printf("%c", c);
+                if (c != '\0') {
+                    strncpy(state->varcode_str, char_to_varcode(c), 16);
+                    state->varcode_pos = 0;
+                    state->str_pos++;
+                } else {
+                    state->str_pos = 0;
+                    state->varcode_pos = -1;
+                    state->modulating = 0; // stop the loop
+                    return;
+                }
+                set_bit(state,
+                        0); // inserts extra zero on beginning, but second of
+                            // two trailing 0's at end of a varcode
+            } else {
+                int bit = 0;
+                bit = state->varcode_str[state->varcode_pos];
+                if (bit != '\0') {
+                    set_bit(state, bit != '0');
+                    state->varcode_pos++;
+                } else {
+                    set_bit(state,
+                            0); // first of two trailing 0 bits after a varcode
+                    state->varcode_pos = -1;
+                }
+            }
+        }
     }
 }
-
 
 void modulate_string(struct modulate_state *state, const char *string) {
     char c;
@@ -288,8 +295,8 @@ static void background_tasks(void) {
     tud_task(); // tinyusb device task
     cdc_task();
 
-    if((samplecount % 62500) == 0) {
-      printf("%d\n", samplecount / 62500);
+    if ((samplecount % 62500) == 0) {
+        printf("%d\n", samplecount / 62500);
     }
 }
 
@@ -297,12 +304,12 @@ extern uint32_t pwmstate;
 static void append_pwm(void *arg, void *data, unsigned int count) {
     // printf("%p %p %ud\n", )
     // printf("write %d count %u\n", ((int16_t *)data)[0], count);
-  
-    //fwrite(data, count, 1, arg);
-  if( *((int16_t *)data) > 0 )
-    pwmstate = 1;
-  else
-    pwmstate = 0;
+
+    // fwrite(data, count, 1, arg);
+    if (*((int16_t *)data) > 0)
+        pwmstate = 1;
+    else
+        pwmstate = 0;
 }
 
 int main(void) {
@@ -339,8 +346,9 @@ int main(void) {
 
     uint32_t rate = SAMPLE_RATE;
     uint32_t tone = CARRIER_TONE; // rate / 3;
-    modulate_init(&mod_instance, tone, rate, 1.0 /* unimplemented */, append_pwm, NULL, TEST_STRING);
-    
+    modulate_init(&mod_instance, tone, rate, 1.0 /* unimplemented */,
+                  append_pwm, NULL, TEST_STRING);
+
     nus_init(&i2s_config, record_buffer, sizeof(record_buffer));
     nus_start();
 
@@ -358,7 +366,7 @@ int main(void) {
     printf("Hello world!\n");
     printf("pwm0 inten: %x\n", NRF_PWM0->INTEN);
     printf("pwm0 periodend: %x\n", NRF_PWM0->EVENTS_PWMPERIODEND);
-    
+
     uint32_t usb_irqs = 0;
     uint32_t last_i2s_irqs = i2s_irqs;
     // uint32_t last_i2s_runs = 0;
@@ -381,7 +389,8 @@ int main(void) {
         //     printf("div: %d  tar: %5.0f  dec: %f  "
         //            "inc: %f  off: %f  clip: %d  peak: %d  real: %d\n",
         //            _div, agc_target, agc_decrease, agc_increase,
-        //            agc_offset, clipped_samples, current_peak, current_peak / agc_div);
+        //            agc_offset, clipped_samples, current_peak, current_peak /
+        //            agc_div);
         //     last_i2s_runs = i2s_runs;
         //     clipped_samples = 0;
         //     tud_cdc_n_write_flush(0);

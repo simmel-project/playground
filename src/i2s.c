@@ -18,7 +18,7 @@ static volatile uint8_t buffer_num;
 uint32_t samplecount = 1;
 uint32_t pwmstate = 0;
 
-static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = { 32 };
+static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
 
 void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     NRF_I2S->PSEL.MCK = (0 + 11); // Assign an unused pin
@@ -45,35 +45,34 @@ void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     buffer_size = len / 2;
     buffer_num = 0;
 
-    NRF_PWM_Type* pwm    = NRF_PWM0;
-    
+    NRF_PWM_Type *pwm = NRF_PWM0;
+
     pwm->ENABLE = 0;
 
     pwm->PSEL.OUT[0] = cfg->word_select_pin_number;
-    
-    pwm->MODE            = PWM_MODE_UPDOWN_Up;
-    pwm->COUNTERTOP      = 64;
-    pwm->PRESCALER       = PWM_PRESCALER_PRESCALER_DIV_4; // 4 MHz, same as I2S
-    pwm->DECODER         = PWM_DECODER_LOAD_Individual;
-    pwm->LOOP            = 0;
-  
-    pwm->SEQ[0].PTR      = (uint32_t) (lrck_duty_cycles);
-    pwm->SEQ[0].CNT      = 4; // default mode is Individual --> count must be 4
-    pwm->SEQ[0].REFRESH  = 0;
+
+    pwm->MODE = PWM_MODE_UPDOWN_Up;
+    pwm->COUNTERTOP = 64;
+    pwm->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4; // 4 MHz, same as I2S
+    pwm->DECODER = PWM_DECODER_LOAD_Individual;
+    pwm->LOOP = 0;
+
+    pwm->SEQ[0].PTR = (uint32_t)(lrck_duty_cycles);
+    pwm->SEQ[0].CNT = 4; // default mode is Individual --> count must be 4
+    pwm->SEQ[0].REFRESH = 0;
     pwm->SEQ[0].ENDDELAY = 0;
 
-    pwm->INTENSET = NRF_PWM_INT_PWMPERIODEND_MASK;  // PWMPERIODEND set
+    pwm->INTENSET = NRF_PWM_INT_PWMPERIODEND_MASK; // PWMPERIODEND set
     pwm->EVENTS_PWMPERIODEND = 0;
-    
+
     pwm->ENABLE = 1;
-    
+
     pwm->EVENTS_SEQEND[0] = 0;
 
-    nrf_gpio_cfg_output(0+2);
-    nrf_gpio_cfg_output(0+19);
-    nrf_gpio_pin_set(0+2);
-    nrf_gpio_pin_clear(0+19);
-    
+    nrf_gpio_cfg_output(0 + 2);
+    nrf_gpio_cfg_output(0 + 19);
+    nrf_gpio_pin_set(0 + 2);
+    nrf_gpio_pin_clear(0 + 19);
 }
 
 void nus_start(void) {
@@ -114,6 +113,9 @@ void nus_stop(void) {
 
     NRF_I2S->INTENCLR = I2S_INTENSET_RXPTRUPD_Msk;
     NRF_I2S->ENABLE = I2S_ENABLE_ENABLE_Disabled;
+
+    NRF_PWM0->TASKS_STOP = PWM_TASKS_STOP_TASKS_STOP_Trigger;
+    NVIC_DisableIRQ(PWM0_IRQn);
 }
 
 //--------------------------------------------------------------------+
@@ -156,23 +158,24 @@ extern struct modulate_state mod_instance;
 void modulate_loop(struct modulate_state *state);
 
 void PWM0_IRQHandler(void) {
-  if(NRF_PWM0->EVENTS_PWMPERIODEND) {
-    if(pwmstate) {
-      nrf_gpio_pin_set(0+2);
-      nrf_gpio_pin_clear(0+19);
-    } else {
-      nrf_gpio_pin_clear(0+2);
-      nrf_gpio_pin_set(0+19);
-    }
-    samplecount = samplecount + 1;
+    if (NRF_PWM0->EVENTS_PWMPERIODEND) {
+        if (pwmstate) {
+            nrf_gpio_pin_set(0 + 2);
+            nrf_gpio_pin_clear(0 + 19);
+        } else {
+            nrf_gpio_pin_clear(0 + 2);
+            nrf_gpio_pin_set(0 + 19);
+        }
+        samplecount = samplecount + 1;
 
-    // compute next state in arrears, because the computation takes variable time
-    modulate_loop(&mod_instance);
+        // compute next state in arrears, because the computation takes variable
+        // time
+        modulate_loop(&mod_instance);
 
-    if( (samplecount % (62500 * 5)) == 0 ) {
-      mod_instance.modulating = 1;
+        if ((samplecount % (62500 * 5)) == 0) {
+            mod_instance.modulating = 1;
+        }
+
+        NRF_PWM0->EVENTS_PWMPERIODEND = 0;
     }
-    
-    NRF_PWM0->EVENTS_PWMPERIODEND = 0;
-  }
 }
