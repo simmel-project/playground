@@ -157,15 +157,18 @@ void I2S_IRQHandler(void) {
 
 extern struct modulate_state mod_instance;
 
+static const uint32_t logical_0 = (0 << 19) | (1 << 2);
+static const uint32_t logical_1 = (1 << 19) | (0 << 2);
+static const uint32_t logical_mask = (1 << 19) | (1 << 2);
+
 void PWM0_IRQHandler(void) {
     if (NRF_PWM0->EVENTS_PWMPERIODEND) {
         static int pwm_state = 0;
+        uint32_t existing = nrf_gpio_port_out_read(NRF_P0) & ~logical_mask;
         if (pwm_state) {
-            nrf_gpio_pin_set(0 + 2);
-            nrf_gpio_pin_clear(0 + 19);
+            nrf_gpio_port_out_write(NRF_P0, existing | logical_0);
         } else {
-            nrf_gpio_pin_clear(0 + 2);
-            nrf_gpio_pin_set(0 + 19);
+            nrf_gpio_port_out_write(NRF_P0, existing | logical_1);
         }
         samplecount = samplecount + 1;
 
