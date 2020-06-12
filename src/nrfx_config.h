@@ -21,4 +21,6 @@
 #define NRFX_SPI2_ENABLED   0
 // #define NRFX_SPI3_ENABLED   0
 
+#define NRFX_TIMER0_ENABLED 1
+
 #endif

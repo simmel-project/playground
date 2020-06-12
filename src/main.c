@@ -38,6 +38,7 @@
 #include "nrfx_pwm.h"
 
 #include "nrf.h"
+#include "nrf_timer.h"
 
 #include "nrfx_nvmc.h"
 #include "nrfx_spi.h"
@@ -80,13 +81,66 @@ static int16_t data_buffer[DATA_BUFFER_ELEMENT_COUNT];
 #endif
 
 uint32_t i2s_runs = 0;
+
+#ifdef MEASURE_RUNTIME
+#define TIMER_OBJ (NRF_TIMER0)
+uint32_t run_processing_start;
+uint32_t run_idle_start;
+struct run_time {
+    uint32_t capture;
+    uint32_t idle;
+};
+
+// You can figure out how much time is spent doing work by running:
+// (gdb) p run_time.capture * 100.0 / (run_time.capture  + run_time.idle)
+// $1 = 64.517458185813695
+// (gdb)
+// In the above example, 64% of time is spent demoduating.
+struct run_time run_time;
+
+static void timer_init(void) {
+    nrf_timer_mode_set(TIMER_OBJ, NRF_TIMER_MODE_TIMER);
+    nrf_timer_bit_width_set(TIMER_OBJ, NRF_TIMER_BIT_WIDTH_32);
+    nrf_timer_frequency_set(TIMER_OBJ, NRF_TIMER_FREQ_16MHz);
+    nrf_timer_task_trigger(TIMER_OBJ, NRF_TIMER_TASK_START);
+}
+
+static uint32_t timer_capture(void) {
+    const uint32_t channel_number = 0;
+    nrf_timer_task_trigger(TIMER_OBJ,
+                           nrf_timer_capture_task_get(channel_number));
+    return nrf_timer_cc_get(TIMER_OBJ, channel_number);
+}
+
+static void runtime_work_start(void) {
+    run_time.capture = run_idle_start - run_processing_start;
+    run_processing_start = timer_capture();
+    run_time.idle = run_processing_start - run_idle_start;
+}
+
+static void runtime_idle_start(void) {
+    run_idle_start = timer_capture();
+}
+#else
+static void timer_init(void) {
+}
+static void runtime_work_start(void) {
+}
+static void runtime_idle_start(void) {
+}
+#endif
+
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
     cdc_task();
 
     if (i2s_ready) {
+
         i2s_ready = false;
         i2s_runs++;
+
+        // Indicate to the timer system that we've started work
+        runtime_work_start();
 
         const size_t samples_per_loop =
             RECORD_BUFFER_SIZE / 2 / sizeof(uint32_t) / 2;
@@ -144,6 +198,9 @@ static void background_tasks(void) {
         bpsk_run(output_buffer, sizeof(output_buffer) / sizeof(*output_buffer));
 #endif
 
+        // Indicate to the measurement system that work is done and we're
+        // idle now.
+        runtime_idle_start();
         if (i2s_ready) {
             printf("I2S UNDERRUN!!!\n");
         }
@@ -166,6 +223,8 @@ int main(void) {
     bpsk_init();
 
     spi_init();
+
+    timer_init();
 
     // Get the SPI ID, just to make sure things are working.
     spi_select();
