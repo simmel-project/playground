@@ -5,7 +5,7 @@
 
 #define MOD_GPIO 0
 #define MOD_PWM 1
-#define MOD_METHOD MOD_GPIO
+#define MOD_METHOD MOD_PWM
 
 struct modulate_cfg {
     uint32_t rate;
