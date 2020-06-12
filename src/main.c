@@ -22,9 +22,6 @@
  * THE SOFTWARE.
  */
 
-// #define RECORD_TEST_16
-// #define RECORD_TEST_32
-
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -50,7 +47,15 @@
 
 #include "printf.h"
 
+// This exposes a struct called `run_time` that can be used
+// to determine how long it takes to do various tasks.
 #define MEASURE_RUNTIME
+
+// Enable one of these in order to record to a RAM buffer
+// rather than sending audio data to the demodulator.
+
+// #define RECORD_TEST_16
+// #define RECORD_TEST_32
 
 __attribute__((used)) uint8_t id[3];
 #if defined(RECORD_TEST_16) || defined(RECORD_TEST_32)
@@ -160,8 +165,8 @@ static void background_tasks(void) {
                                          ((unswapped << 16) & 0xffff0000)));
             *output_buffer_ptr++ = swapped;
 
-            // Advance the output buffer pointer, wrapping when it reaches the
-            // end.
+            // Advance the output buffer pointer, wrapping when it reaches
+            // the end.
             if (output_buffer_ptr >= &data_buffer[DATA_BUFFER_ELEMENT_COUNT])
                 output_buffer_ptr = &data_buffer[0];
         }
@@ -174,10 +179,8 @@ static void background_tasks(void) {
         static int32_t *output_buffer_ptr = (int32_t *)&data_buffer[0];
         for (i = 0; i < samples_per_loop; i++) {
             uint32_t unswapped = input_buffer[i * 2];
-            uint32_t neg_mask = (unswapped & (1 << 31)) ? 0xaa000055 : 0;
             int32_t swapped = (int32_t)((((unswapped >> 16) & 0xffff) |
-                                         ((unswapped << 16) & 0xffff0000)) |
-                                         neg_mask);
+                                         ((unswapped << 16) & 0xffff0000)));
             *output_buffer_ptr++ = swapped;
             if (output_buffer_ptr >=
                 (int32_t *)&data_buffer[DATA_BUFFER_ELEMENT_COUNT])
@@ -258,32 +261,13 @@ int main(void) {
 
     uint32_t usb_irqs = 0;
     uint32_t last_i2s_irqs = i2s_irqs;
-    // uint32_t last_i2s_runs = 0;
     while (1) {
         background_tasks();
         usb_irqs++;
         if (i2s_irqs != last_i2s_irqs) {
-            // printf("I2S IRQ count: %d  USB IRQ count: %d\n", i2s_irqs,
-            // usb_irqs);
             last_i2s_irqs = i2s_irqs;
             usb_irqs = 0;
         }
-        // if (((i2s_runs & 127) == 0) && (i2s_runs != last_i2s_runs)) {
-        //     // printf("div: %d  tar: %5.0f  red: %f  ", agc_div, agc_target,
-        //     //        agc_decrease);
-        //     // tud_cdc_n_write_flush(0);
-        //     // printf("inc: %f  off: %f\n", agc_increase, agc_offset);
-        //     // last_i2s_runs = i2s_runs;
-        //     // tud_cdc_n_write_flush(0);
-        //     printf("div: %d  tar: %5.0f  dec: %f  "
-        //            "inc: %f  off: %f  clip: %d  peak: %d  real: %d\n",
-        //            _div, agc_target, agc_decrease, agc_increase,
-        //            agc_offset, clipped_samples, current_peak, current_peak /
-        //            agc_div);
-        //     last_i2s_runs = i2s_runs;
-        //     clipped_samples = 0;
-        //     tud_cdc_n_write_flush(0);
-        // }
     }
 
     NVIC_SystemReset();
