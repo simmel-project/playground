@@ -118,7 +118,7 @@ static uint16_t mod_duty_cycles_same[4*16] = {
 					 96, 0, 0, 192,
 					 96, 0, 0, 192,
 };
-static uint16_t mod_duty_cycles_transition[4*16] = {
+static uint16_t mod_duty_cycles_transition01[4*16] = {
 					 96, 0, 0, 192,
 					 96, 0, 0, 192,
 					 96, 0, 0, 192,
@@ -132,9 +132,27 @@ static uint16_t mod_duty_cycles_transition[4*16] = {
 					 96, 0, 0, 192,
 					 96, 0, 0, 192,
 					 96, 0, 0, 180,
-					 96, 0, 0, 168,
 					 96, 0, 0, 156,
-					 96, 0, 0, 168,
+					 96, 0, 0, 156,
+					 96, 0, 0, 180,
+};
+static uint16_t mod_duty_cycles_transition10[4*16] = {
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 204,
+					 96, 0, 0, 228,
+					 96, 0, 0, 228,
+					 96, 0, 0, 204,
 };
 #endif
 #endif
@@ -369,8 +387,11 @@ void PWM1_IRQHandler(void) {
 	if (last_pwm_state == pwm_state) {
 	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_same);
 	  pwm->SEQ[0].CNT = 4*16;
+	} else if(last_pwm_state == 0) {
+	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_transition01);
+	  pwm->SEQ[0].CNT = 4*16;
 	} else {
-	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_transition);
+	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_transition10);
 	  pwm->SEQ[0].CNT = 4*16;
 	}
 	pwm->LOOP = 0;
