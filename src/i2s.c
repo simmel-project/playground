@@ -20,9 +20,124 @@ uint32_t samplecount = 1;
 volatile uint32_t pwmstate = 0;
 
 
+#define NORMAL_PWM 0
+
 static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
 #if MOD_METHOD == MOD_PWM
-static uint16_t mod_duty_cycles[4] = {96, 96 | 0x8000, 0, 0};
+#if NORMAL_PWM
+static uint16_t mod_duty_cycles_zero_to_zero[4*16] = {
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+};
+static uint16_t mod_duty_cycles_one_to_one[4*16] = {
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+					 96 | 0x8000, 96, 0, 192,
+};
+#else
+#if 0
+static uint16_t mod_duty_cycles_same[4*16] = {
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+};
+static uint16_t mod_duty_cycles_transition[4*16] = {
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 180,
+					 96, 96 | 0x8000, 0, 168,
+					 96, 96 | 0x8000, 0, 156,
+					 96, 96 | 0x8000, 0, 168,
+};
+#else
+static uint16_t mod_duty_cycles_same[4*16] = {
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+};
+static uint16_t mod_duty_cycles_transition[4*16] = {
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 192,
+					 96, 0, 0, 180,
+					 96, 0, 0, 168,
+					 96, 0, 0, 156,
+					 96, 0, 0, 168,
+};
+#endif
+#endif
 #endif
 
 void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
@@ -83,20 +198,34 @@ void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     NRF_PWM1->ENABLE = 0;
     NRF_PWM1->PSEL.OUT[0] = 0+2;
     NRF_PWM1->PSEL.OUT[1] = 0+19;
-    
+
+#if NORMAL_PWM
     NRF_PWM1->MODE = PWM_MODE_UPDOWN_Up;
     NRF_PWM1->COUNTERTOP = 192;
     NRF_PWM1->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4; // 4 MHz, same as I2S
-    NRF_PWM1->DECODER = PWM_DECODER_LOAD_Individual;
+    NRF_PWM1->DECODER = PWM_DECODER_LOAD_Individual | PWM_DECODER_MODE_RefreshCount;
     NRF_PWM1->LOOP = 0;
 
-    NRF_PWM1->SEQ[0].PTR = (uint32_t)(mod_duty_cycles);
-    NRF_PWM1->SEQ[0].CNT = 4;
+    NRF_PWM1->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_zero_to_zero);
+    NRF_PWM1->SEQ[0].CNT = 4*16;
+    NRF_PWM1->SEQ[1].CNT = 0; // don't use this sequence
     NRF_PWM1->SEQ[0].REFRESH = 0;
     NRF_PWM1->SEQ[0].ENDDELAY = 0;
+#else
+    NRF_PWM1->MODE = PWM_MODE_UPDOWN_Up;
+    NRF_PWM1->COUNTERTOP = 192;
+    NRF_PWM1->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4; // 4 MHz, same as I2S
+    NRF_PWM1->DECODER = PWM_DECODER_LOAD_WaveForm | PWM_DECODER_MODE_RefreshCount;
+    NRF_PWM1->LOOP = 0;
 
-    NRF_PWM1->INTENSET = NRF_PWM_INT_PWMPERIODEND_MASK; // PWMPERIODEND set
-    NRF_PWM1->EVENTS_PWMPERIODEND = 0;
+    NRF_PWM1->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_same);
+    NRF_PWM1->SEQ[0].CNT = 4*16;
+    NRF_PWM1->SEQ[1].CNT = 0; // don't use this sequence
+    NRF_PWM1->SEQ[0].REFRESH = 0;
+    NRF_PWM1->SEQ[0].ENDDELAY = 0;
+#endif
+
+    NRF_PWM1->INTENSET = NRF_PWM_INT_SEQEND0_MASK; 
     NRF_PWM1->EVENTS_SEQEND[0] = 0;
     NRF_PWM1->ENABLE = 1;
 
@@ -210,6 +339,9 @@ void PWM1_IRQHandler(void) {
 #endif
     if (pwm->EVENTS_PWMPERIODEND) {
         static int pwm_state = 0;
+#if !NORMAL_PWM	
+	static int last_pwm_state = 0;
+#endif
 
 #if MOD_METHOD == MOD_GPIO	
         uint32_t existing = nrf_gpio_port_out_read(NRF_P0) & ~logical_mask;
@@ -222,14 +354,30 @@ void PWM1_IRQHandler(void) {
 	  mod_instance.run = 1;
 	}
 #else if MOD_METHOD == MOD_PWM
+#if NORMAL_PWM	
 	if (pwm_state) {
-	  mod_duty_cycles[0] = 96;
-	  mod_duty_cycles[1] = 0;
+	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_zero_to_zero);
 	} else {
-	  mod_duty_cycles[0] =  96 | 0x8000;
-	  mod_duty_cycles[1] = 0;
+	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_one_to_one);
 	}
+	pwm->LOOP = 0;
+	pwm->SEQ[0].CNT = 4*16;
+	pwm->EVENTS_SEQEND[0] = 0;
+	
 	pwm->TASKS_SEQSTART[0] = 1;
+#else
+	if (last_pwm_state == pwm_state) {
+	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_same);
+	  pwm->SEQ[0].CNT = 4*16;
+	} else {
+	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_transition);
+	  pwm->SEQ[0].CNT = 4*16;
+	}
+	pwm->LOOP = 0;
+	pwm->EVENTS_SEQEND[0] = 0;
+	
+	pwm->TASKS_SEQSTART[0] = 1;
+#endif
 	
 	if( (samplecount % (62500 / 3 * 3)) == 1 ) {
 	  mod_instance.run = 1;
@@ -239,6 +387,9 @@ void PWM1_IRQHandler(void) {
 	
         // compute next state in arrears, because the computation takes variable
         // time
+#if !NORMAL_PWM	
+	last_pwm_state = pwm_state;
+#endif
         pwm_state = modulate_next_sample(&mod_instance);
 
         pwm->EVENTS_PWMPERIODEND = 0;

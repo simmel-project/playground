@@ -54,7 +54,7 @@ int modulate_next_sample(struct modulate_state *state) {
 #if MOD_METHOD == MOD_GPIO
     if (state->bit_count >= 32) {
 #else if MOD_METHOD == MOD_PWM
-    if (state->carrier_count >= 32) {
+    if (state->carrier_count >= 2) {
 #endif
       
         // Find the next bit
