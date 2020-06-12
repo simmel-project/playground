@@ -55,11 +55,11 @@
 #define BAUD_RATE (651.0f) // 31.25
 #define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
 
-#define TEST_STRING                                                           \
+#define TEST_STRING2                                                           \
     "Four score and seven years ago, our fathers brought forth on this "       \
     "continent a new nation: conceived in liberty, and dedicated to the "      \
     "proposition that all men are created equal."
-#define TEST_STRING2                                                            \
+#define TEST_STRING                                                            \
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"       \
     "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"      \
     "3333333333333333333333333333333333333333333333333333333333333333333"
