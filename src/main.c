@@ -55,10 +55,14 @@
 #define BAUD_RATE (651.0f) // 31.25
 #define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
 
-#define TEST_STRING                                                            \
+#define TEST_STRING2                                                           \
     "Four score and seven years ago, our fathers brought forth on this "       \
     "continent a new nation: conceived in liberty, and dedicated to the "      \
     "proposition that all men are created equal."
+#define TEST_STRING                                                            \
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"       \
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"      \
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
 
 struct modulate_state mod_instance;
 
@@ -137,10 +141,6 @@ extern uint32_t samplecount;
 static void background_tasks(void) {
     tud_task(); // tinyusb device task
     cdc_task();
-
-    if ((samplecount % 62500) == 0) {
-        printf("%d\n", samplecount / 62500);
-    }
 }
 
 int main(void) {

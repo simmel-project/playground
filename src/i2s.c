@@ -19,7 +19,11 @@ static volatile uint8_t buffer_num;
 uint32_t samplecount = 1;
 volatile uint32_t pwmstate = 0;
 
+
 static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
+#if MOD_METHOD == MOD_PWM
+static uint16_t mod_duty_cycles[4] = {96, 96 | 0x8000, 0, 0};
+#endif
 
 void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     NRF_I2S->PSEL.MCK = (0 + 11); // Assign an unused pin
@@ -63,17 +67,42 @@ void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     pwm->SEQ[0].REFRESH = 0;
     pwm->SEQ[0].ENDDELAY = 0;
 
+#if MOD_METHOD == MOD_GPIO
     pwm->INTENSET = NRF_PWM_INT_PWMPERIODEND_MASK; // PWMPERIODEND set
     pwm->EVENTS_PWMPERIODEND = 0;
 
-    pwm->ENABLE = 1;
-
     pwm->EVENTS_SEQEND[0] = 0;
-
     nrf_gpio_cfg_output(0 + 2);
     nrf_gpio_cfg_output(0 + 19);
     nrf_gpio_pin_set(0 + 2);
     nrf_gpio_pin_clear(0 + 19);
+#endif
+    pwm->ENABLE = 1;
+
+#if MOD_METHOD == MOD_PWM
+    NRF_PWM1->ENABLE = 0;
+    NRF_PWM1->PSEL.OUT[0] = 0+2;
+    NRF_PWM1->PSEL.OUT[1] = 0+19;
+    
+    NRF_PWM1->MODE = PWM_MODE_UPDOWN_Up;
+    NRF_PWM1->COUNTERTOP = 192;
+    NRF_PWM1->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4; // 4 MHz, same as I2S
+    NRF_PWM1->DECODER = PWM_DECODER_LOAD_Individual;
+    NRF_PWM1->LOOP = 0;
+
+    NRF_PWM1->SEQ[0].PTR = (uint32_t)(mod_duty_cycles);
+    NRF_PWM1->SEQ[0].CNT = 4;
+    NRF_PWM1->SEQ[0].REFRESH = 0;
+    NRF_PWM1->SEQ[0].ENDDELAY = 0;
+
+    NRF_PWM1->INTENSET = NRF_PWM_INT_PWMPERIODEND_MASK; // PWMPERIODEND set
+    NRF_PWM1->EVENTS_PWMPERIODEND = 0;
+    NRF_PWM1->EVENTS_SEQEND[0] = 0;
+    NRF_PWM1->ENABLE = 1;
+
+    NRF_PWM1->TASKS_SEQSTART[0] = 1;
+#endif
+    
 }
 
 void nus_start(void) {
@@ -87,8 +116,13 @@ void nus_start(void) {
     NVIC_SetPriority(I2S_IRQn, 3);
     NVIC_EnableIRQ(I2S_IRQn);
 
+#if MOD_METHOD == MOD_GPIO
     NVIC_SetPriority(PWM0_IRQn, 2);
     NVIC_EnableIRQ(PWM0_IRQn);
+#else if MOD_METHOD == MOD_PWM
+    NVIC_SetPriority(PWM1_IRQn, 2);
+    NVIC_EnableIRQ(PWM1_IRQn);
+#endif
 
     // Turn on the interrupt to the NVIC but not within the NVIC itself. This
     // will wake the CPU and keep it awake until it is serviced without
@@ -105,6 +139,12 @@ void nus_stop(void) {
     // Stop the task as soon as possible to prevent it from overwriting the
     // buffer.
     NVIC_DisableIRQ(I2S_IRQn);
+#if MOD_METHOD == MOD_GPIO
+    NVIC_DisableIRQ(PWM0_IRQn);
+#else if MOD_METHOD == MOD_PWM
+    NVIC_DisableIRQ(PWM1_IRQn);
+#endif
+    
     NRF_I2S->TASKS_STOP = 1;
     NRF_I2S->CONFIG.RXEN = I2S_CONFIG_RXEN_RXEN_Disabled;
     NRF_I2S->EVENTS_RXPTRUPD = 0;
@@ -157,29 +197,50 @@ void I2S_IRQHandler(void) {
 
 extern struct modulate_state mod_instance;
 
+#if MOD_METHOD == MOD_GPIO
 static const uint32_t logical_0 = (0 << 19) | (1 << 2);
 static const uint32_t logical_1 = (1 << 19) | (0 << 2);
 static const uint32_t logical_mask = (1 << 19) | (1 << 2);
 
 void PWM0_IRQHandler(void) {
-    if (NRF_PWM0->EVENTS_PWMPERIODEND) {
+    NRF_PWM_Type *pwm = NRF_PWM0;
+#else if MOD_METHOD == MOD_PWM
+void PWM1_IRQHandler(void) {
+    NRF_PWM_Type *pwm = NRF_PWM1;
+#endif
+    if (pwm->EVENTS_PWMPERIODEND) {
         static int pwm_state = 0;
+
+#if MOD_METHOD == MOD_GPIO	
         uint32_t existing = nrf_gpio_port_out_read(NRF_P0) & ~logical_mask;
         if (pwm_state) {
             nrf_gpio_port_out_write(NRF_P0, existing | logical_0);
         } else {
             nrf_gpio_port_out_write(NRF_P0, existing | logical_1);
         }
-        samplecount = samplecount + 1;
-	
-	if( (samplecount % (62500 * 5)) == 1 ) {
+	if( (samplecount % (62500 / 1 * 5)) == 1 ) {
 	  mod_instance.run = 1;
 	}
-
+#else if MOD_METHOD == MOD_PWM
+	if (pwm_state) {
+	  mod_duty_cycles[0] = 96;
+	  mod_duty_cycles[1] = 0;
+	} else {
+	  mod_duty_cycles[0] =  96 | 0x8000;
+	  mod_duty_cycles[1] = 0;
+	}
+	pwm->TASKS_SEQSTART[0] = 1;
+	
+	if( (samplecount % (62500 / 3 * 3)) == 1 ) {
+	  mod_instance.run = 1;
+	}
+#endif
+        samplecount = samplecount + 1;
+	
         // compute next state in arrears, because the computation takes variable
         // time
         pwm_state = modulate_next_sample(&mod_instance);
 
-        NRF_PWM0->EVENTS_PWMPERIODEND = 0;
+        pwm->EVENTS_PWMPERIODEND = 0;
     }
 }

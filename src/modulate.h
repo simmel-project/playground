@@ -3,6 +3,10 @@
 
 #include <stdint.h>
 
+#define MOD_GPIO 0
+#define MOD_PWM 1
+#define MOD_METHOD MOD_GPIO
+
 struct modulate_cfg {
     uint32_t rate;
     uint32_t carrier;
@@ -20,7 +24,8 @@ struct modulate_state {
     int str_pos;
     int varcode_pos;
     const char *varcode_str;
-    int bit_count;
+    int bit_count;    // count of samples elapsed (for GPIO mode)
+    int carrier_count;  // count of carrier cycles elapsed (for PWM mode)
     int16_t high;
     int16_t low;
 };
