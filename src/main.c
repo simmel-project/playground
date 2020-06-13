@@ -54,8 +54,8 @@
 // Enable one of these in order to record to a RAM buffer
 // rather than sending audio data to the demodulator.
 
-// #define RECORD_TEST_16
-// #define RECORD_TEST_32
+//#define RECORD_TEST_16
+//#define RECORD_TEST_32
 
 __attribute__((used)) uint8_t id[3];
 #if defined(RECORD_TEST_16) || defined(RECORD_TEST_32)

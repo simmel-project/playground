@@ -18,7 +18,8 @@
 #include "fir_coefficients.h"
 #include "lpf_coefficients.h"
 
-// #define CAPTURE_BUFFER
+#define CAPTURE_BUFFER
+#define LOG_QUADRATURE
 // #define LOG_TRANSITION_PLLS
 
 struct nco_state {
@@ -127,7 +128,7 @@ void bpsk_demod_init(void) {
     bpsk_state.nco.offset = 0;
 
     bpsk_state.agc = 1.0;
-    bpsk_state.agc_step = 0.05;
+    bpsk_state.agc_step = 0.001;
     bpsk_state.agc_target_hi = 0.5;
     bpsk_state.agc_target_low = 0.25;
 
@@ -155,11 +156,11 @@ void bpsk_demod_init(void) {
         0x66, 0x6d, 0x74, 0x20, // 'fmt '
         0x10, 0x00, 0x00, 0x00, // Sub chunk 1 size (chunk is 16 bytes)
         0x01, 0x00,             // Audio format (1 = pcm)
-        0x01, 0x00,             // Numer of channels (1 = mono)
+        0x02, 0x00,             // Numer of channels (1 = mono)
         0x11, 0x2b, 0x00, 0x00, // Sample rate
         0x22, 0x56, 0x00, 0x00, // Byte rate
         0x02, 0x00,             // Block alignment
-        32,   0x00,             // Bits per sample
+        16,   0x00,             // Bits per sample
         0x64, 0x61, 0x74, 0x61, // 'data'
         0xf8, 0x11, 0x05, 0x00, // chunk size
     };
@@ -172,10 +173,21 @@ void bpsk_demod_init(void) {
 }
 
 #ifdef CAPTURE_BUFFER
+#ifndef LOG_QUADRATURE
 static void append_to_capture_buffer(demod_sample_t *samples) {
     uint32_t sample_count = 0;
     while (sample_count++ < SAMPLES_PER_PERIOD) {
         sample_wave.saved_samples[saved_samples_ptr++] = *samples++;
+        if (saved_samples_ptr > CAPTURE_BUFFER_COUNT) {
+            saved_samples_ptr = 0;
+        }
+    }
+}
+#endif
+static void append_to_capture_buffer_stereo(int16_t *left, int16_t *right) {
+    uint32_t sample_count = 0;
+    while (sample_count++ < SAMPLES_PER_PERIOD) {
+        sample_wave.saved_samples[saved_samples_ptr++] = *left++ | ((*right++) << 16);
         if (saved_samples_ptr > CAPTURE_BUFFER_COUNT) {
             saved_samples_ptr = 0;
         }
@@ -228,12 +240,15 @@ static void bpsk_core(void) {
     arm_fir_f32(&bpsk_state.q_lpf, q_mult_samps, q_lpf_samples,
                 SAMPLES_PER_PERIOD);
 
-    // int16_t i_loop[SAMPLES_PER_PERIOD];
-    // int16_t q_loop[SAMPLES_PER_PERIOD];
-    // arm_float_to_q15(bpsk_state.i_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
-    // arm_float_to_q15(q_lpf_samples, q_loop, SAMPLES_PER_PERIOD);
-    // write_wav_stereo(i_loop, q_loop, SAMPLES_PER_PERIOD,
-    // "quadrature_loop.wav");
+#ifdef LOG_QUADRATURE
+    int16_t i_loop[SAMPLES_PER_PERIOD];
+    int16_t q_loop[SAMPLES_PER_PERIOD];
+    arm_float_to_q15(bpsk_state.i_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
+    arm_float_to_q15(q_lpf_samples, q_loop, SAMPLES_PER_PERIOD);
+    append_to_capture_buffer_stereo(i_loop, q_loop);
+    //write_wav_stereo(i_loop, q_loop, SAMPLES_PER_PERIOD,
+    //"quadrature_loop.wav");
+#endif
 
     float32_t errorwindow[SAMPLES_PER_PERIOD];
     arm_mult_f32(bpsk_state.i_lpf_samples, q_lpf_samples, errorwindow,
@@ -243,7 +258,7 @@ static void bpsk_core(void) {
         avg += errorwindow[i];
     }
     avg /= ((float32_t)SAMPLES_PER_PERIOD);
-    bpsk_state.nco.error = -(avg);
+    bpsk_state.nco.error = -(avg)/(0.25);
     // printf("err: %0.04f\n", bpsk_state.nco.error);
 }
 
@@ -285,7 +300,7 @@ static int bpsk_fill_buffer(demod_sample_t *samples, uint32_t nb,
                samples_to_take * sizeof(demod_sample_t));
 
 #ifdef CAPTURE_BUFFER
-        append_to_capture_buffer(bpsk_state.cache);
+	//        append_to_capture_buffer(bpsk_state.cache);
 #endif
 
         // There is enough data, so convert it to f32 and clear the
@@ -312,7 +327,7 @@ static int bpsk_fill_buffer(demod_sample_t *samples, uint32_t nb,
         }
 
 #ifdef CAPTURE_BUFFER
-        append_to_capture_buffer(samples);
+	//        append_to_capture_buffer(samples);
 #endif
         // Directly convert the sample data to f32
         arm_q31_to_float(samples, bpsk_state.current, SAMPLES_PER_PERIOD);
@@ -325,7 +340,7 @@ static int bpsk_fill_buffer(demod_sample_t *samples, uint32_t nb,
     return SAMPLES_PER_PERIOD;
 }
 
-#define HYSTERESIS (8.0/32768.0)
+#define HYSTERESIS (32.0/32768.0)
 
 int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
                uint32_t *processed_samples) {
