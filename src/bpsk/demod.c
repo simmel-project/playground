@@ -34,7 +34,7 @@
 #define LOOP_AVG 0
 #define LOOP_FILT 1
 #define LOOP_FILT_NONE 2
-#define LOOP_TYPE LOOP_FILT
+#define LOOP_TYPE LOOP_AVG
 
 // https://www.mathworks.com/help/signal/ref/fir1.html#bulla9m
 // order of returned value of k must be reversed
@@ -606,7 +606,7 @@ static int bpsk_fill_buffer(demod_sample_t *samples, uint32_t nb,
     return SAMPLES_PER_PERIOD;
 }
 
-#define HYSTERESIS (32.0/32768.0)
+#define HYSTERESIS (8.0/32768.0)
 
 int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
                uint32_t *processed_samples) {
