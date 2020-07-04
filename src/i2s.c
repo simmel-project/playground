@@ -22,7 +22,7 @@ volatile uint32_t pwmstate = 0;
 
 static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
 
-#if 1 // more power, sharper transition
+#if 0 // more power, sharper transition
 static uint16_t mod_duty_cycles_same[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
