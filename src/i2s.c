@@ -22,7 +22,7 @@ volatile uint32_t pwmstate = 0;
 
 static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
 
-#if 0 // more power, sharper transition
+#if 1 // more power, sharper transition
 static uint16_t mod_duty_cycles_same[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
@@ -50,14 +50,14 @@ static uint16_t mod_duty_cycles_transition01[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 188,
-					 96, 96 | 0x8000, 0, 183,
-					 96, 96 | 0x8000, 0, 177, // total shortening should be -192/2 = -96
-					 96, 96 | 0x8000, 0, 172, // to give -pi phase shift to carrier
-					 96, 96 | 0x8000, 0, 172,
-					 96, 96 | 0x8000, 0, 177,
-					 96, 96 | 0x8000, 0, 183,
-					 96, 96 | 0x8000, 0, 188,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 187,
+					 96, 96 | 0x8000, 0, 182, // total shortening should be -192/2 = -96
+					 96, 96 | 0x8000, 0, 174, // to give -pi phase shift to carrier
+					 96, 96 | 0x8000, 0, 162,
+					 96, 96 | 0x8000, 0, 174,
+					 96, 96 | 0x8000, 0, 182,
+					 96, 96 | 0x8000, 0, 187,
 };
 static uint16_t mod_duty_cycles_transition10[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
@@ -68,14 +68,14 @@ static uint16_t mod_duty_cycles_transition10[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 196,
-					 96, 96 | 0x8000, 0, 201,
-					 96, 96 | 0x8000, 0, 207, // total lengthening should be 192/2 = 96
-					 96, 96 | 0x8000, 0, 212, // to give +pi phase shift to carrier
-					 96, 96 | 0x8000, 0, 212,
-					 96, 96 | 0x8000, 0, 207,
-					 96, 96 | 0x8000, 0, 201,
-					 96, 96 | 0x8000, 0, 196,
+					 96, 96 | 0x8000, 0, 192,
+					 96, 96 | 0x8000, 0, 197,
+					 96, 96 | 0x8000, 0, 202, // total lengthening should be 192/2 = 96
+					 96, 96 | 0x8000, 0, 210, // to give +pi phase shift to carrier
+					 96, 96 | 0x8000, 0, 222,
+					 96, 96 | 0x8000, 0, 210,
+					 96, 96 | 0x8000, 0, 202,
+					 96, 96 | 0x8000, 0, 197,
 };
 #else // optimal quiet
 static uint16_t mod_duty_cycles_same[4*16] = {
