@@ -56,11 +56,11 @@
 #define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
 
 #define TEST_STRING                                                            \
-    "Article 1."\
+    "Article 1. "\
     "All human beings are born free and equal in dignity and rights. "         \
-    "They are endowed with reason and conscience and should act towards one"   \
-    "another in a spirit of brotherhood."                                      \
-    "Article 2."\
+    "They are endowed with reason and conscience and should act towards one "  \
+    "another in a spirit of brotherhood. "                                     \
+    "Article 2. "\
     "Everyone is entitled to all the rights and freedoms set forth in this "   \
     "Declaration, without distinction of any kind, such as race, colour, sex, "\
     "language, religion, political or other opinion, national or social "      \
@@ -69,8 +69,9 @@
     "international status of the country or territory to which a person "      \
     "belongs, whether it be independent, trust, non-self-governing or under "  \
     "any other limitation of sovereignty. " \
-    "Article 3."\
-    "Everyone has the right to life, liberty and security of person."
+    "Article 3. "\
+    "Everyone has the right to life, liberty and security of person. "\
+    "##### "\
 
 #define TEST_STRING2                                                            \
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"       \
