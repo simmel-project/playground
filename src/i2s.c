@@ -139,6 +139,15 @@ static uint16_t mod_duty_cycles_transition10[4*16] = {
 #endif
 
 void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
+    int i;
+
+    // correct duty cycles based on total period (init values set a constant of 96)
+    for( i = 0; i < 16; i++ ) {
+      mod_duty_cycles_same[i * 4] = mod_duty_cycles_same[i * 4 + 3] / 2;
+      mod_duty_cycles_transition01[i * 4] = mod_duty_cycles_transition01[i * 4 + 3] / 2;
+      mod_duty_cycles_transition10[i * 4] = mod_duty_cycles_transition10[i * 4 + 3] / 2;
+    }
+    
     NRF_I2S->PSEL.MCK = (0 + 11); // Assign an unused pin
     //    NRF_I2S->PSEL.LRCK = cfg->word_select_pin_number;
     NRF_I2S->PSEL.LRCK = (0 + 24);
