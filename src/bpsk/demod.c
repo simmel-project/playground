@@ -17,19 +17,26 @@
 
 #define TWO_PI ((float32_t) 6.283185307179586476925286766559f)
 #define SAMPLE_RATE 62500
-#define CARRIER_TONE 20833.33333333f 
+#if 1
+#define CARRIER_TONE 20833.3f   // 20785.0f - as measured
 #define BAUD_RATE (651.0417f)
 #define PLL_INCR (BAUD_RATE / (float32_t)(SAMPLE_RATE))
-#define SAMPLES_PER_PERIOD 2
+#define SAMPLES_PER_PERIOD 20
+#else
+#define CARRIER_TONE 20840
+#define BAUD_RATE (651.0f) // 31.25
+#define PLL_INCR (BAUD_RATE / (float32_t)(SAMPLE_RATE))
+#define SAMPLES_PER_PERIOD 20
+#endif
 
-#define FIR_LPF 0
-#define IIR_LPF 1
-#define FILTER_TYPE IIR_LPF
+#define FIR_LPF 1
+#define IIR_LPF 0
+#define FILTER_TYPE FIR_LPF
 
 #define FIR_BPF 0
 #define IIR_BPF 1
 #define NONE_BPF 2
-#define BPF_TYPE NONE_BPF
+#define BPF_TYPE FIR_BPF
 
 #define LOOP_AVG 0
 #define LOOP_FILT 1
@@ -515,11 +522,11 @@ static void bpsk_core(void) {
 #endif
 #if 1    
     arm_float_to_q15(bpsk_state.i_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
-    arm_float_to_q15(bpsk_state.loopfilt, q_loop, SAMPLES_PER_PERIOD);
+    //arm_float_to_q15(bpsk_state.loopfilt, q_loop, SAMPLES_PER_PERIOD);
     // extract error loop
-    //for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
-    //  q_loop[i] = (q15_t) __SSAT((q31_t) (bpsk_state.nco.error * 32768.0f), 16);
-    //}
+    for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
+      q_loop[i] = (q15_t) __SSAT((q31_t) (bpsk_state.nco.error * 32768.0f), 16);
+    }
 #endif
     append_to_capture_buffer_stereo(i_loop, q_loop);
     //write_wav_stereo(i_loop, q_loop, SAMPLES_PER_PERIOD,
