@@ -21,7 +21,7 @@
 #define CARRIER_TONE 20833.3f   // 20785.0f - as measured
 #define BAUD_RATE (651.0417f)
 #define PLL_INCR (BAUD_RATE / (float32_t)(SAMPLE_RATE))
-#define SAMPLES_PER_PERIOD 20
+#define SAMPLES_PER_PERIOD 2
 #else
 #define CARRIER_TONE 20840
 #define BAUD_RATE (651.0f) // 31.25
@@ -31,17 +31,17 @@
 
 #define FIR_LPF 1
 #define IIR_LPF 0
-#define FILTER_TYPE FIR_LPF
+#define FILTER_TYPE IIR_LPF
 
 #define FIR_BPF 0
 #define IIR_BPF 1
 #define NONE_BPF 2
-#define BPF_TYPE FIR_BPF
+#define BPF_TYPE IIR_BPF
 
 #define LOOP_AVG 0
 #define LOOP_FILT 1
 #define LOOP_FILT_NONE 2
-#define LOOP_TYPE LOOP_AVG
+#define LOOP_TYPE LOOP_FILT
 
 // https://www.mathworks.com/help/signal/ref/fir1.html#bulla9m
 // order of returned value of k must be reversed
@@ -81,7 +81,7 @@ float32_t bpf_ladder[2] = {-0.7071105, 0.4142105};
 #include "lpf_coefficients.h"
 #elif FILTER_TYPE == IIR_LPF
 
-#if 0
+#if 1
 // butter lowpass order 1, 1302Hz
 //[k,v] = tf2latc([0.03169693 0.03169693],[ 1.         -0.93660614])
 #define NUMSTAGES 1
@@ -89,7 +89,7 @@ float32_t reflection_coeff[1] = {-0.9366061};
 float32_t ladder_coeff[2] = {0.0316969, 0.0613845};
 #endif
 
-#if 1
+#if 0
 // butter lowpass order 1, 2604Hz
 // [k,v] = tf2latc([0.06150806 0.06150806],[ 1.         -0.87698387])
 #define NUMSTAGES 1
@@ -170,7 +170,7 @@ float32_t loop_reflection_coeff[1] = {-0.9366061};
 float32_t loop_ladder_coeff[2] = {0.0316969, 0.0613845};
 #endif
 
-#if 0
+#if 1
 // butter lowpass order 1, 2604Hz
 // [k,v] = tf2latc([0.06150806 0.06150806],[ 1.         -0.87698387])
 #define LOOPSTAGES 1
@@ -178,7 +178,7 @@ float32_t loop_reflection_coeff[1] = {-0.8769839};
 float32_t loop_ladder_coeff[2] = {0.0615081, 0.1154496};
 #endif
 
-#if 1
+#if 0
 // butter lowpass order 1, 5208Hz
 // [k,v] = tf2latc([0.11632985 0.11632985],[ 1.        -0.7673403])
 #define LOOPSTAGES 1
@@ -333,7 +333,7 @@ void bpsk_demod_init(void) {
 #if LOOP_TYPE == LOOP_FILT
     arm_iir_lattice_init_f32(&bpsk_state.loop_filt, LOOPSTAGES, loop_reflection_coeff, loop_ladder_coeff,
 			     bpsk_state.loop_filt_state, SAMPLES_PER_PERIOD);
-    bpsk_state.gain = 0.1f * TWO_PI;
+    bpsk_state.gain = 0.001f * TWO_PI;
     for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
       bpsk_state.loopfilt[i] = 0.0f;
     }
@@ -479,8 +479,15 @@ static void bpsk_core(void) {
     arm_fir_f32(&bpsk_state.q_lpf, q_mult_samps, q_lpf_samples,
                 SAMPLES_PER_PERIOD);
 #elif FILTER_TYPE == IIR_LPF
+
+#if LOOP_TYPE == LOOP_AVG    
     arm_iir_lattice_f32(&bpsk_state.i_lpf, i_mult_samps, bpsk_state.i_lpf_samples, SAMPLES_PER_PERIOD);
     arm_iir_lattice_f32(&bpsk_state.q_lpf, q_mult_samps, q_lpf_samples, SAMPLES_PER_PERIOD);
+#else
+    arm_iir_lattice_f32(&bpsk_state.i_lpf, q_mult_samps, bpsk_state.i_lpf_samples, SAMPLES_PER_PERIOD);
+    arm_iir_lattice_f32(&bpsk_state.q_lpf, i_mult_samps, q_lpf_samples, SAMPLES_PER_PERIOD);
+#endif
+    
 #endif
 
     float32_t errorwindow[SAMPLES_PER_PERIOD];
@@ -522,11 +529,17 @@ static void bpsk_core(void) {
 #endif
 #if 1    
     arm_float_to_q15(bpsk_state.i_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
-    //arm_float_to_q15(bpsk_state.loopfilt, q_loop, SAMPLES_PER_PERIOD);
+    //arm_float_to_q15(q_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
+
+#if LOOP_TYPE != LOOP_AVG
+    arm_float_to_q15(bpsk_state.loopfilt, q_loop, SAMPLES_PER_PERIOD);
+#else
     // extract error loop
     for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
       q_loop[i] = (q15_t) __SSAT((q31_t) (bpsk_state.nco.error * 32768.0f), 16);
     }
+#endif
+    
 #endif
     append_to_capture_buffer_stereo(i_loop, q_loop);
     //write_wav_stereo(i_loop, q_loop, SAMPLES_PER_PERIOD,

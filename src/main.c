@@ -219,7 +219,9 @@ int main(void) {
     NRF_CLOCK->TASKS_LFCLKSTOP = 1UL;
     NRF_CLOCK->LFCLKSRC = CLOCK_LFCLKSRC_SRC_Xtal;
     NRF_CLOCK->TASKS_LFCLKSTART = 1UL;
-    NRF_CLOCK->TASKS_HFCLKSTOP = 1UL;
+
+    // run HFCLK for better demodulation precision, at higher power consumption
+    NRF_CLOCK->TASKS_HFCLKSTART = 1UL;
 
     usb_init();
     tusb_init();
