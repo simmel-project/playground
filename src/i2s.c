@@ -24,9 +24,9 @@ static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
 
 #define DOUBLE_POWER (96 | 0x8000)
 #define SINGLE_POWER (0)
-#define POWER_LEVEL SINGLE_POWER
+#define POWER_LEVEL DOUBLE_POWER
 
-#if 1 // sharper transition
+#if 0 // sharper transition
 static uint16_t mod_duty_cycles_same[4*16] = {
 					 96, POWER_LEVEL, 0, 192,
 					 96, POWER_LEVEL, 0, 192,

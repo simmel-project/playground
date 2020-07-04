@@ -55,11 +55,24 @@
 #define BAUD_RATE (651.0417f) // 31.25
 #define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
 
-#define TEST_STRING2                                                           \
-    "Four score and seven years ago, our fathers brought forth on this "       \
-    "continent a new nation: conceived in liberty, and dedicated to the "      \
-    "proposition that all men are created equal."
 #define TEST_STRING                                                            \
+    "Article 1."\
+    "All human beings are born free and equal in dignity and rights. "         \
+    "They are endowed with reason and conscience and should act towards one"   \
+    "another in a spirit of brotherhood."                                      \
+    "Article 2."\
+    "Everyone is entitled to all the rights and freedoms set forth in this "   \
+    "Declaration, without distinction of any kind, such as race, colour, sex, "\
+    "language, religion, political or other opinion, national or social "      \
+    "origin, property, birth or other status. Furthermore, no distinction "    \
+    "shall be made on the basis of the political, jurisdictional or "          \
+    "international status of the country or territory to which a person "      \
+    "belongs, whether it be independent, trust, non-self-governing or under "  \
+    "any other limitation of sovereignty. " \
+    "Article 3."\
+    "Everyone has the right to life, liberty and security of person."
+
+#define TEST_STRING2                                                            \
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"       \
     "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"      \
     "3333333333333333333333333333333333333333333333333333333333333333333"
