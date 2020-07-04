@@ -17,17 +17,10 @@
 
 #define TWO_PI ((float32_t) 6.283185307179586476925286766559f)
 #define SAMPLE_RATE 62500
-#if 1
 #define CARRIER_TONE 20833.3f   // 20785.0f - as measured
 #define BAUD_RATE (651.0417f)
 #define PLL_INCR (BAUD_RATE / (float32_t)(SAMPLE_RATE))
 #define SAMPLES_PER_PERIOD 2
-#else
-#define CARRIER_TONE 20840
-#define BAUD_RATE (651.0f) // 31.25
-#define PLL_INCR (BAUD_RATE / (float32_t)(SAMPLE_RATE))
-#define SAMPLES_PER_PERIOD 20
-#endif
 
 #define FIR_LPF 1
 #define IIR_LPF 0
@@ -41,7 +34,7 @@
 #define LOOP_AVG 0
 #define LOOP_FILT 1
 #define LOOP_FILT_NONE 2
-#define LOOP_TYPE LOOP_FILT
+#define LOOP_TYPE LOOP_AVG
 
 // https://www.mathworks.com/help/signal/ref/fir1.html#bulla9m
 // order of returned value of k must be reversed
@@ -80,8 +73,15 @@ float32_t bpf_ladder[2] = {-0.7071105, 0.4142105};
 #if FILTER_TYPE == FIR_LPF
 #include "lpf_coefficients.h"
 #elif FILTER_TYPE == IIR_LPF
-
-#if 1
+/*
+generator:
+>>> import scipy.signal
+>>> b, a = scipy.signal.iirfilter(2, 651/62500, btype='lowpass', ftype='butter', output='ba')  # 651 is the cutoff here
+>>> print ("// [k,v] = tf2latc({},{})".format(b, a))
+// [k,v] = tf2latc([0.00026162 0.00052324 0.00026162],[ 1.         -1.95373091  0.95477739])
+>>> 
+ */
+#if 0
 // butter lowpass order 1, 1302Hz
 //[k,v] = tf2latc([0.03169693 0.03169693],[ 1.         -0.93660614])
 #define NUMSTAGES 1
@@ -128,6 +128,33 @@ float32_t ladder_coeff[3] = {0.0297878, 0.1005210, 0.10075836};
 float32_t reflection_coeff[2] = {0.9771260, -0.9998661};
 float32_t ladder_coeff[3] = {0.000066163, 0.000263123, 0.000264601};
 #endif
+
+#if 0
+// butterworth lowpass order 2, 651 Hz
+// [k,v] = tf2latc([0.00026162 0.00052324 0.00026162],[ 1.         -1.95373091  0.95477739])
+#define NUMSTAGES 2
+float32_t reflection_coeff[2] = {0.954777, -0.999465};
+float32_t ladder_coeff[3] = {0.00104565, 0.00103438, 0.00026162};
+#endif
+
+#if 0
+//>>> b, a = scipy.signal.iirfilter(1, 651/62500, btype='lowpass', ftype='butter', output='ba')
+//>>> print ("// [k,v] = tf2latc({},{})".format(b, a))
+// [k,v] = tf2latc([0.01609944 0.01609944],[ 1.         -0.96780112])
+#define NUMSTAGES 1
+float32_t reflection_coeff[1] = {-0.967801};
+float32_t ladder_coeff[2] = {0.03168050, 0.01609944};
+#endif
+
+#if 1
+//>>> b, a = scipy.signal.iirfilter(2, 976/62500, btype='lowpass', ftype='butter', output='ba')
+//>>> print ("// [k,v] = tf2latc({},{})".format(b, a))
+// [k,v] = tf2latc([0.00058142 0.00116283 0.00058142],[ 1.         -1.93064637  0.93297204])
+#define NUMSTAGES 2
+float32_t reflection_coeff[2] = {0.932972, -0.998797};
+float32_t ladder_coeff[3] = {0.00058142, 0.00228535, 0.00232157};
+#endif
+
 #endif
 
 #if LOOP_TYPE == LOOP_FILT
@@ -146,7 +173,7 @@ float32_t loop_reflection_coeff[1] = {-0.9949860};
 float32_t loop_ladder_coeff[2] = {0.002506980, 0.005001390};
 #endif
 
-#if 0
+#if 1
 #define LOOPSTAGES 2
 // butterworth lowpass order 2, 500 Hz
 // [k,v] = tf2latc([0.00015515 0.0003103  0.00015515],[ 1.         -1.96446058  0.96508117])
@@ -170,7 +197,7 @@ float32_t loop_reflection_coeff[1] = {-0.9366061};
 float32_t loop_ladder_coeff[2] = {0.0316969, 0.0613845};
 #endif
 
-#if 1
+#if 0
 // butter lowpass order 1, 2604Hz
 // [k,v] = tf2latc([0.06150806 0.06150806],[ 1.         -0.87698387])
 #define LOOPSTAGES 1
@@ -263,8 +290,8 @@ struct bpsk_state {
     arm_iir_lattice_instance_f32 loop_filt;
     float32_t loop_filt_state[SAMPLES_PER_PERIOD + LOOPSTAGES];
     float32_t loopfilt[SAMPLES_PER_PERIOD];
-    float32_t gain;
 #endif
+    float32_t gain;
   
     float32_t i_lpf_samples[SAMPLES_PER_PERIOD];
 
@@ -284,6 +311,8 @@ struct bpsk_state {
 
 static struct bpsk_state bpsk_state;
 
+#define MAX_PHASE_DELTA (0.005f * TWO_PI)
+
 #if LOOP_TYPE == LOOP_AVG    
 static void make_nco(float32_t *i, float32_t *q) {
 #elif LOOP_TYPE == LOOP_FILT || LOOP_TYPE == LOOP_FILT_NONE
@@ -298,7 +327,15 @@ static void make_nco(float32_t *i, float32_t *q, float32_t *error) {
 #if LOOP_TYPE == LOOP_AVG
       bpsk_state.nco.phase += bpsk_state.nco.error;
 #elif LOOP_TYPE == LOOP_FILT || LOOP_TYPE == LOOP_FILT_NONE
-      bpsk_state.nco.phase += (*error++ * bpsk_state.gain);
+      float delta = *error++ * bpsk_state.gain;
+      if (delta >= MAX_PHASE_DELTA) {
+	delta = MAX_PHASE_DELTA;
+      } else if (delta <= -MAX_PHASE_DELTA) {
+	delta = -MAX_PHASE_DELTA;
+      }
+      bpsk_state.nco.phase += delta;
+      
+      //bpsk_state.nco.phase += (*error++ * bpsk_state.gain);
 #endif
       // recenter the error between +/- 2*pi to prevent cumulative phase error leading to numerical instability
       if(bpsk_state.nco.phase >= TWO_PI)
@@ -330,10 +367,10 @@ void bpsk_demod_init(void) {
 			     bpsk_state.iir_bpf_state, SAMPLES_PER_PERIOD);
 #endif
 
+    bpsk_state.gain = 0.05f * TWO_PI;
 #if LOOP_TYPE == LOOP_FILT
     arm_iir_lattice_init_f32(&bpsk_state.loop_filt, LOOPSTAGES, loop_reflection_coeff, loop_ladder_coeff,
 			     bpsk_state.loop_filt_state, SAMPLES_PER_PERIOD);
-    bpsk_state.gain = 0.001f * TWO_PI;
     for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
       bpsk_state.loopfilt[i] = 0.0f;
     }
@@ -423,10 +460,10 @@ static void append_to_capture_buffer_stereo(int16_t *left, int16_t *right) {
 #endif
 
 static void bpsk_core(void) {
-  //float32_t stash[SAMPLES_PER_PERIOD];
-  // for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
-  //  stash[i] = bpsk_state.current[i];
-  //}
+  float32_t stash[SAMPLES_PER_PERIOD];
+   for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
+    stash[i] = bpsk_state.current[i];
+  }
     // Perform an initial FIR filter on the samples. This creates a LPF.
     // This line may be omitted for testing.
 #if BPF_TYPE == FIR_BPF  
@@ -502,7 +539,7 @@ static void bpsk_core(void) {
         avg += errorwindow[i];
     }
     avg /= ((float32_t)SAMPLES_PER_PERIOD);
-    bpsk_state.nco.error = -(avg) * 0.01f;
+    bpsk_state.nco.error = -(avg) * bpsk_state.gain;
     // printf("err: %0.04f\n", bpsk_state.nco.error);
 #elif LOOP_TYPE == LOOP_FILT
     arm_iir_lattice_f32(&bpsk_state.loop_filt, errorwindow, bpsk_state.loopfilt, SAMPLES_PER_PERIOD);
@@ -521,29 +558,27 @@ static void bpsk_core(void) {
     //    arm_float_to_q15(bpsk_state.current, i_loop, SAMPLES_PER_PERIOD);
     //    arm_float_to_q15(bpsk_state.i_lpf_samples, q_loop, SAMPLES_PER_PERIOD);
 
-#if 0
-    arm_float_to_q15(i_samps, i_loop, SAMPLES_PER_PERIOD);
-    for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
-      q_loop[i] = (q15_t) __SSAT((q31_t) (bpsk_state.nco.error * 32768.0f), 16);
-    }
-#endif
+    //arm_float_to_q15(i_samps, i_loop, SAMPLES_PER_PERIOD);
+    //for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
+    //  q_loop[i] = (q15_t) __SSAT((q31_t) (bpsk_state.nco.error * 32768.0f), 16);
+    //}
 #if 1    
     arm_float_to_q15(bpsk_state.i_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
     //arm_float_to_q15(q_lpf_samples, i_loop, SAMPLES_PER_PERIOD);
 
 #if LOOP_TYPE != LOOP_AVG
-    arm_float_to_q15(bpsk_state.loopfilt, q_loop, SAMPLES_PER_PERIOD);
+    arm_float_to_q15(i_mult_samps, q_loop, SAMPLES_PER_PERIOD);
 #else
+    /*
     // extract error loop
     for( int i = 0; i < SAMPLES_PER_PERIOD; i++ ) {
       q_loop[i] = (q15_t) __SSAT((q31_t) (bpsk_state.nco.error * 32768.0f), 16);
-    }
+      }*/
+    arm_float_to_q15(stash, q_loop, SAMPLES_PER_PERIOD);
 #endif
     
 #endif
     append_to_capture_buffer_stereo(i_loop, q_loop);
-    //write_wav_stereo(i_loop, q_loop, SAMPLES_PER_PERIOD,
-    //"quadrature_loop.wav");
 #endif
 
 }
@@ -626,7 +661,7 @@ static int bpsk_fill_buffer(demod_sample_t *samples, uint32_t nb,
     return SAMPLES_PER_PERIOD;
 }
 
-#define HYSTERESIS (8.0/32768.0)
+#define HYSTERESIS (32.0/32768.0)
 
 int bpsk_demod(uint32_t *bit, demod_sample_t *samples, uint32_t nb,
                uint32_t *processed_samples) {
