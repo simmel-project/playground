@@ -51,8 +51,8 @@
 #include "printf.h"
 
 #define SAMPLE_RATE 62500
-#define CARRIER_TONE 20840
-#define BAUD_RATE (651.0f) // 31.25
+#define CARRIER_TONE 20833.33f
+#define BAUD_RATE (651.0417f) // 31.25
 #define PLL_INCR (BAUD_RATE / (float)(SAMPLE_RATE))
 
 #define TEST_STRING2                                                           \
@@ -152,7 +152,9 @@ int main(void) {
     NRF_CLOCK->TASKS_LFCLKSTOP = 1UL;
     NRF_CLOCK->LFCLKSRC = CLOCK_LFCLKSRC_SRC_Xtal;
     NRF_CLOCK->TASKS_LFCLKSTART = 1UL;
-    NRF_CLOCK->TASKS_HFCLKSTOP = 1UL;
+
+    // turn on HFCLK for accurate modulation
+    NRF_CLOCK->TASKS_HFCLKSTART = 1UL;
 
     usb_init();
     tusb_init();

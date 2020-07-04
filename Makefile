@@ -160,8 +160,6 @@ CFLAGS += \
 	-fno-strict-aliasing \
 	-Wall \
 	-Wextra \
-	-Werror \
-	-Wfatal-errors \
 	-Werror-implicit-function-declaration \
 	-Wundef \
 	-Wshadow \
@@ -170,6 +168,9 @@ CFLAGS += \
 	-Wmissing-format-attribute \
 	-Wno-endif-labels \
 	-Wunreachable-code
+
+#	-Werror \
+#	-Wfatal-errors \
 
 # Suppress warning caused by SDK
 CFLAGS += -Wno-unused-parameter -Wno-expansion-to-defined

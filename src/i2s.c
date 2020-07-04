@@ -20,49 +20,9 @@ uint32_t samplecount = 1;
 volatile uint32_t pwmstate = 0;
 
 
-#define NORMAL_PWM 0
-
 static uint16_t lrck_duty_cycles[PWM0_CH_NUM] = {32};
-#if MOD_METHOD == MOD_PWM
-#if NORMAL_PWM
-static uint16_t mod_duty_cycles_zero_to_zero[4*16] = {
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-};
-static uint16_t mod_duty_cycles_one_to_one[4*16] = {
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-					 96 | 0x8000, 96, 0, 192,
-};
-#else
-#if 0 // more power, sharper transition
+
+#if 1 // more power, sharper transition
 static uint16_t mod_duty_cycles_same[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
@@ -90,14 +50,14 @@ static uint16_t mod_duty_cycles_transition01[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 184, // total shortening should be -192/2 = -96
-					 96, 96 | 0x8000, 0, 174, // to give -pi phase shift to carrier
-					 96, 96 | 0x8000, 0, 170,
-					 96, 96 | 0x8000, 0, 170,
-					 96, 96 | 0x8000, 0, 174,
-					 96, 96 | 0x8000, 0, 184,
+					 96, 96 | 0x8000, 0, 188,
+					 96, 96 | 0x8000, 0, 183,
+					 96, 96 | 0x8000, 0, 177, // total shortening should be -192/2 = -96
+					 96, 96 | 0x8000, 0, 172, // to give -pi phase shift to carrier
+					 96, 96 | 0x8000, 0, 172,
+					 96, 96 | 0x8000, 0, 177,
+					 96, 96 | 0x8000, 0, 183,
+					 96, 96 | 0x8000, 0, 188,
 };
 static uint16_t mod_duty_cycles_transition10[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
@@ -108,14 +68,14 @@ static uint16_t mod_duty_cycles_transition10[4*16] = {
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
 					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 192,
-					 96, 96 | 0x8000, 0, 200, // total lengthening should be 192/2 = 96
-					 96, 96 | 0x8000, 0, 210, // to give +pi phase shift to carrier
-					 96, 96 | 0x8000, 0, 214,
-					 96, 96 | 0x8000, 0, 214,
-					 96, 96 | 0x8000, 0, 210,
-					 96, 96 | 0x8000, 0, 200,
+					 96, 96 | 0x8000, 0, 196,
+					 96, 96 | 0x8000, 0, 201,
+					 96, 96 | 0x8000, 0, 207, // total lengthening should be 192/2 = 96
+					 96, 96 | 0x8000, 0, 212, // to give +pi phase shift to carrier
+					 96, 96 | 0x8000, 0, 212,
+					 96, 96 | 0x8000, 0, 207,
+					 96, 96 | 0x8000, 0, 201,
+					 96, 96 | 0x8000, 0, 196,
 };
 #else // optimal quiet
 static uint16_t mod_duty_cycles_same[4*16] = {
@@ -161,7 +121,7 @@ static uint16_t mod_duty_cycles_transition10[4*16] = {
 					 96, 0, 0, 192,
 					 96, 0, 0, 193,
 					 96, 0, 0, 194,
-					 96, 0, 0, 199,
+					 96, 0, 0, 196,
 					 96, 0, 0, 200,
 					 96, 0, 0, 205,
 					 96, 0, 0, 212,
@@ -172,8 +132,6 @@ static uint16_t mod_duty_cycles_transition10[4*16] = {
 					 96, 0, 0, 194,
 					 96, 0, 0, 193,
 };
-#endif
-#endif
 #endif
 
 void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
@@ -235,37 +193,42 @@ void nus_init(const struct i2s_pin_config *cfg, void *buffer, size_t len) {
     NRF_PWM1->PSEL.OUT[0] = 0+2;
     NRF_PWM1->PSEL.OUT[1] = 0+19;
 
-#if NORMAL_PWM
-    NRF_PWM1->MODE = PWM_MODE_UPDOWN_Up;
-    NRF_PWM1->COUNTERTOP = 192;
-    NRF_PWM1->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4; // 4 MHz, same as I2S
-    NRF_PWM1->DECODER = PWM_DECODER_LOAD_Individual | PWM_DECODER_MODE_RefreshCount;
-    NRF_PWM1->LOOP = 0;
-
-    NRF_PWM1->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_zero_to_zero);
-    NRF_PWM1->SEQ[0].CNT = 4*16;
-    NRF_PWM1->SEQ[1].CNT = 0; // don't use this sequence
-    NRF_PWM1->SEQ[0].REFRESH = 0;
-    NRF_PWM1->SEQ[0].ENDDELAY = 0;
-#else
     NRF_PWM1->MODE = PWM_MODE_UPDOWN_Up;
     NRF_PWM1->COUNTERTOP = 192;
     NRF_PWM1->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4; // 4 MHz, same as I2S
     NRF_PWM1->DECODER = PWM_DECODER_LOAD_WaveForm | PWM_DECODER_MODE_RefreshCount;
     NRF_PWM1->LOOP = 0;
+    // NRF_PWM1->SHORTS = NRF_PWM_SHORT_LOOPSDONE_SEQSTART0_MASK; // when loop is done immediately start seq0 again
 
     NRF_PWM1->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_same);
     NRF_PWM1->SEQ[0].CNT = 4*16;
-    NRF_PWM1->SEQ[1].CNT = 0; // don't use this sequence
+    NRF_PWM1->SEQ[1].PTR = (uint32_t)(mod_duty_cycles_same);
+    NRF_PWM1->SEQ[1].CNT = 0; // don't use
     NRF_PWM1->SEQ[0].REFRESH = 0;
     NRF_PWM1->SEQ[0].ENDDELAY = 0;
-#endif
 
     NRF_PWM1->INTENSET = NRF_PWM_INT_SEQEND0_MASK; 
     NRF_PWM1->EVENTS_SEQEND[0] = 0;
     NRF_PWM1->ENABLE = 1;
 
     NRF_PWM1->TASKS_SEQSTART[0] = 1;
+
+    /*
+    NRF_PWM1->MODE = PWM_MODE_UPDOWN_Up;
+    NRF_PWM1->COUNTERTOP = 768;
+    NRF_PWM1->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_1; // 4 MHz, same as I2S
+    NRF_PWM1->DECODER = PWM_DECODER_LOAD_Individual;
+    NRF_PWM1->LOOP = 0;
+
+    NRF_PWM1->SEQ[0].PTR = (uint32_t) &simple_test;
+    NRF_PWM1->SEQ[0].CNT = 4;
+    NRF_PWM1->SEQ[0].REFRESH = 0;
+    NRF_PWM1->SEQ[0].ENDDELAY = 0;
+    NRF_PWM1->INTENCLR = 0xFF;
+    NRF_PWM1->ENABLE = 1;
+    NRF_PWM1->TASKS_SEQSTART[0] = 1;
+    */
+    
 #endif
     
 }
@@ -285,13 +248,14 @@ void nus_start(void) {
     NVIC_SetPriority(PWM0_IRQn, 2);
     NVIC_EnableIRQ(PWM0_IRQn);
 #else if MOD_METHOD == MOD_PWM
-    NVIC_SetPriority(PWM1_IRQn, 2);
+    NVIC_SetPriority(PWM1_IRQn, 1);
     NVIC_EnableIRQ(PWM1_IRQn);
 #endif
 
     // Turn on the interrupt to the NVIC but not within the NVIC itself. This
     // will wake the CPU and keep it awake until it is serviced without
     // triggering an interrupt handler.
+
     NRF_PWM0->TASKS_SEQSTART[0] = 1;
     NRF_I2S->INTENSET = I2S_INTENSET_RXPTRUPD_Msk;
     NRF_I2S->ENABLE = I2S_ENABLE_ENABLE_Enabled;
@@ -375,9 +339,7 @@ void PWM1_IRQHandler(void) {
 #endif
     if (pwm->EVENTS_PWMPERIODEND) {
         static int pwm_state = 0;
-#if !NORMAL_PWM	
 	static int last_pwm_state = 0;
-#endif
 
 #if MOD_METHOD == MOD_GPIO	
         uint32_t existing = nrf_gpio_port_out_read(NRF_P0) & ~logical_mask;
@@ -390,18 +352,9 @@ void PWM1_IRQHandler(void) {
 	  mod_instance.run = 1;
 	}
 #else if MOD_METHOD == MOD_PWM
-#if NORMAL_PWM	
-	if (pwm_state) {
-	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_zero_to_zero);
-	} else {
-	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_one_to_one);
-	}
-	pwm->LOOP = 0;
-	pwm->SEQ[0].CNT = 4*16;
-	pwm->EVENTS_SEQEND[0] = 0;
 	
-	pwm->TASKS_SEQSTART[0] = 1;
-#else
+	pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_same);
+	pwm->SEQ[0].CNT = 4*16;
 	if (last_pwm_state == pwm_state) {
 	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_same);
 	  pwm->SEQ[0].CNT = 4*16;
@@ -412,11 +365,11 @@ void PWM1_IRQHandler(void) {
 	  pwm->SEQ[0].PTR = (uint32_t)(mod_duty_cycles_transition10);
 	  pwm->SEQ[0].CNT = 4*16;
 	}
+
 	pwm->LOOP = 0;
 	pwm->EVENTS_SEQEND[0] = 0;
 	
 	pwm->TASKS_SEQSTART[0] = 1;
-#endif
 	
 	if( (samplecount % (62500 / 3 * 3)) == 1 ) {
 	  mod_instance.run = 1;
@@ -426,11 +379,7 @@ void PWM1_IRQHandler(void) {
 	
         // compute next state in arrears, because the computation takes variable
         // time
-#if !NORMAL_PWM	
 	last_pwm_state = pwm_state;
-#endif
         pwm_state = modulate_next_sample(&mod_instance);
-
-        pwm->EVENTS_PWMPERIODEND = 0;
     }
 }
